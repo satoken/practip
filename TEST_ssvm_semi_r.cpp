@@ -969,318 +969,197 @@ clip(double w)
   else {return -1 * clip(-1 * w);}
 }
 
+template < class Func >
+void
+ssvm::
+extract_feature(uint i, uint j, Func& func) const
+{
+  char buf[20];
+  if (use_feature_[FG_Rss5]) {
+    sprintf(buf, "%c%c%c%c%c",
+            j-2>=0 ? rna_ss[j-2] : '-',
+            j-1>=0 ? rna_ss[j-1] : '-',
+            rna_ss[j],
+            j+1<RNA_len ? rna_ss[j+1] : '-',
+            j+2<RNA_len ? rna_ss[j+2] : '-');
+    func(FG_Rss5, buf, i, j);
+  }
+  // Proteinss 
+  if (use_feature_[FG_Pss5]) {
+    sprintf(buf, "%c%c%c%c%c",
+            i-2>=0 ? pro_ss[i-2] : '-',
+            i-1>=0 ? pro_ss[i-1] : '-',
+            pro_ss[i],
+            i+1<Pro_len ? pro_ss[i+1] : '-',
+            i+2<Pro_len ? pro_ss[i+2] : '-');
+    func(FG_Pss5, buf, i, j);
+  }
+  // Pro-RNAss 
+  if (use_feature_[FG_PsRs]) {
+    sprintf(buf, "%c%c", pro_ss[i], rna_ss[j]);
+    func(FG_PsRs, buf, i, j);
+  }
+  // Pro-RNA ss 3-3
+  if (use_feature_[FG_Ps3Rs3]) {
+    sprintf(buf, "%c%c%c%c%c%c",
+            i-1>=0 ? pro_ss[i-1] : '-',
+            pro_ss[i],
+            i+1<=Pro_len ? pro_ss[i+1] :'-',
+            j-1>=0 ? rna_ss[j-1] : '-',
+            rna_ss[j],
+            j+1<=RNA_len ? rna_ss[j+1] : '-');
+    func(FG_Ps3Rs3, buf, i, j);
+  }
+  // AAp
+  if (use_feature_[FG_AAp]) {
+    sprintf(buf, "%d", AA_7group(protein[i]));
+    func(FG_AAp, buf, i, j);
+  }
+  // AAab
+  if (use_feature_[FG_AAab]) {
+    sprintf(buf, "%d", AA_3ab(protein[i]));
+    func(FG_AAab, buf, i, j);
+  }
+  // AAh
+  if (use_feature_[FG_AAh]) {
+    sprintf(buf, "%d", AA_3hydro(protein[i]));
+    func(FG_AAh, buf, i, j);
+  }
+  // Rpp
+  if (use_feature_[FG_Rpp]) {
+    sprintf(buf, "%d", RNA_2pp(RNA[j]));
+    func(FG_Rpp, buf, i, j);
+  }
+  // Protein 1 -
+  if (use_feature_[FG_P1]) {
+    sprintf(buf, "%c", protein[i]);
+    func(FG_P1, buf, i, j);
+  }      
+  // Protein 1 - RNA 1
+  if (use_feature_[FG_P1R1]) {
+    sprintf(buf, "%c%c", protein[i], RNA[j]);
+    func(FG_P1R1, buf, i, j);
+  }      
+  // Protein 3 - RNA 1
+  if (use_feature_[FG_P3R1]) {
+    sprintf(buf, "%c%c%c%c",
+            i-1>=0 ? protein[i-1] : '-',
+            protein[i],
+            i+1<Pro_len ? protein[i+1] : '-',
+            RNA[j]);
+    func(FG_P3R1, buf, i, j);
+  }      
+  // Protein 3 - RNA 3
+  if (use_feature_[FG_P3R3]) {
+    sprintf(buf, "%c%c%c%c%c%c",
+            i-1>=0 ? protein[i-1] : '-',
+            protein[i],
+            i+1<Pro_len ? protein[i+1] : '-',
+            j-1>=0 ? RNA[j-1] : '-',
+            RNA[j],
+            j+1<RNA_len ? RNA[j+1] : '-');
+    func(FG_P3R3, buf, i, j);
+  }      
+  // Protein 5 - RNA 1
+  if (use_feature_[FG_P5R1]) {
+    sprintf(buf, "%c%c%c%c%c%c",
+            i-2>=0 ? protein[i-2] : '-',
+            i-1>=0 ? protein[i-1] : '-',
+            protein[i],
+            i+1<Pro_len ? protein[i+1] : '-',
+            i+2<Pro_len ? protein[i+2] : '-',
+            RNA[j]);
+    func(FG_P5R1, buf, i, j);
+  }      
+  // Protein 1 - RNA 5
+  if (use_feature_[FG_P1R5]) {
+    sprintf(buf, "%c%c%c%c%c%c",
+            protein[i],
+            j-2>=0 ? RNA[j-2] : '-',
+            j-1>=0 ? RNA[j-1] : '-',
+            RNA[j],
+            j+1<RNA_len ? RNA[j+1] : '-',
+            j+2<RNA_len ? RNA[j+2] : '-');
+    func(FG_P1R5, buf, i, j);
+  }      
+  // Protein 5 - RNA 5
+  if (use_feature_[FG_P5R5]) {
+    sprintf(buf, "%c%c%c%c%c%c%c%c%c%c",
+            i-2>=0 ? protein[i-2] : '-',
+            i-1>=0 ? protein[i-1] : '-',
+            protein[i],
+            i+1<Pro_len ? protein[i+1] : '-',
+            i+2<Pro_len ? protein[i+2] : '-',
+            j-2>=0 ? RNA[j-2] : '-',
+            j-1>=0 ? RNA[j-1] : '-',
+            RNA[j],
+            j+1<RNA_len ? RNA[j+1] : '-',
+            j+2<RNA_len ? RNA[j+2] : '-');
+    func(FG_P5R5, buf, i, j);
+  }      
+}
+
+struct EdgeWeight
+{
+  EdgeWeight(const std::map<std::string,float>& feature_weight,
+             VVF& edge_weight)
+    : feature_weight_(feature_weight),
+      edge_weight_(edge_weight)
+  { }
+
+  void operator()(uint fgroup, const char* fname, uint i, uint j)
+  {
+    std::map<std::string,float>::const_iterator m;
+    m=feature_weight_[fgroup].find(fname);
+    if (m!=feature_weight_[fgroup].end())
+      edge_weight_[i][j] += m->second;
+  }
+
+  const std::map<std::string,float>& feature_weight_;
+  VVF& edge_weight_;
+};
+
 void
 ssvm::
 calculate_edge_weight(VVF& edge_weight) const
 {
+  EdgeWeight e(feature_weight_, edge_weight);
   edge_weight.resize(Pro_len);
-  char buf[20];
   for (uint i=0; i!=Pro_len; ++i) {
     edge_weight[i].resize(RNA_len);
     for (uint j=0; j!=RNA_len; ++j) {
       edge_weight[i][j] = 0.0;
-      std::map<std::string,float>::const_iterator m;
-      // RNAss 
-      if(use_feature_[FG_Rss5] && !feature_group_[FG_Rss5].empty()) {
-        sprintf(buf, "%c%c%c%c%c",
-                j-2>=0 ? rna_ss[j-2] : '-',
-                j-1>=0 ? rna_ss[j-1] : '-',
-                rna_ss[j],
-                j+1<RNA_len ? rna_ss[j+1] : '-',
-                j+2<RNA_len ? rna_ss[j+2] : '-');
-        m=feature_group_[FG_Rss5].find(buf);
-        if (m!=feature_group_[FG_Rss5].end())
-          edge_weight[i][j] += m->second;
-      }
-      // Proteinss 
-      if (use_feature_[FG_Pss5] && !feature_group_[FG_Pss5].empty()) {
-	sprintf(buf, "%c%c%c%c%c",
-                i-2>=0 ? pro_ss[i-2] : '-',
-                i-1>=0 ? pro_ss[i-1] : '-',
-                pro_ss[i],
-                i+1<Pro_len ? pro_ss[i+1] : '-',
-                i+2<Pro_len ? pro_ss[i+2] : '-');
-        m=feature_group_[FG_Pss5].find(buf);
-        if (m!=feature_group_[FG_Pss5].end())
-          edge_weight[i][j] += m->second;
-      }
-      // Pro-RNAss 
-      if (use_feature_[FG_PsRs] && !feature_group_[FG_PsRs].empty()) {
-	sprintf(buf, "%c%c", pro_ss[i], rna_ss[j]);
-        m=feature_group_[FG_PsRs].find(buf);
-        if (m!=feature_group_[FG_PsRs].end())
-          edge_weight[i][j] += m->second;
-      }
-      // Pro-RNA ss 3-3
-      if (use_feature_[FG_Ps3Rs3] && !feature_group_[FG_Ps3Rs3].empty()) {
-	sprintf(buf, "%c%c%c%c%c%c",
-                i-1>=0 ? pro_ss[i-1] : '-',
-                pro_ss[i],
-                i+1<=Pro_len ? pro_ss[i+1] :'-',
-                j-1>=0 ? rna_ss[j-1] : '-',
-                rna_ss[j],
-                j+1<=RNA_len ? rna_ss[j+1] : '-');
-        m=feature_group_[FG_Ps3Rs3].find(buf);
-        if (m!=feature_group_[FG_Ps3Rs3].end())
-          edge_weight[i][j] += m->second;
-      }
-      // AAp
-      if (use_feature_[FG_AAp] && !feature_group_[FG_AAp].empty()) {
-        sprintf(buf, "%d", AA_7group(protein[i]));
-        m=feature_group_[FG_AAp].find(buf);
-        if (m!=feature_group_[FG_AAp].end())
-          edge_weight[i][j] += m->second;
-      }
-      // AAab
-      if (use_feature_[FG_AAab] && !feature_group_[FG_AAab].empty()) {
-        sprintf(buf, "%d", AA_3ab(protein[i]));
-        m=feature_group_[FG_AAab].find(buf);
-        if (m!=feature_group_[FG_AAab].end())
-          edge_weight[i][j] += m->second;
-      }
-      // AAh
-      if (use_feature_[FG_AAh] && !feature_group_[FG_AAh].empty()) {
-        sprintf(buf, "%d", AA_3hydro(protein[i]));
-        m=feature_group_[FG_AAh].find(buf);
-        if (m!=feature_group_[FG_AAh].end())
-          edge_weight[i][j] += m->second;
-      }
-      // Rpp
-      if (use_feature_[FG_Rpp] && !feature_group_[FG_Rpp].empty()) {
-        sprintf(buf, "%d", RNA_2pp(RNA[j]));
-        m=feature_group_[FG_Rpp].find(buf);
-        if (m!=feature_group_[FG_Rpp].end())
-          edge_weight[i][j] += m->second;
-      }
-      // Protein 1 -
-      if (use_feature_[FG_P1] && !feature_group_[FG_P1].empty()) {
-        sprintf(buf, "%c", protein[i]);
-        m=feature_group_[FG_P1].find(buf);
-        if (m!=feature_group_[FG_P1].end())
-          edge_weight[i][j] += m->second;
-      }      
-      // Protein 1 - RNA 1
-      if (use_feature_[FG_P1R1] && !feature_group_[FG_P1R1].empty()) {
-        sprintf(buf, "%c%c", protein[i], RNA[j]);
-        m=feature_group_[FG_P1R1].find(buf);
-        if (m!=feature_group_[FG_P1R1].end())
-          edge_weight[i][j] += m->second;
-      }      
-      // Protein 3 - RNA 1
-      if (use_feature_[FG_P3R1] && !feature_group_[FG_P3R1].empty()) {
-	sprintf(buf, "%c%c%c%c",
-                i-1>=0 ? protein[i-1] : '-',
-                protein[i],
-                i+1<Pro_len ? protein[i+1] : '-',
-                RNA[j]);
-        m=feature_group_[FG_P3R1].find(buf);
-        if (m!=feature_group_[FG_P3R1].end())
-          edge_weight[i][j] += m->second;
-      }      
-      // Protein 3 - RNA 3
-      if (use_feature_[FG_P3R3] && !feature_group_[FG_P3R3].empty()) {
-	sprintf(buf, "%c%c%c%c%c%c",
-                i-1>=0 ? protein[i-1] : '-',
-                protein[i],
-                i+1<Pro_len ? protein[i+1] : '-',
-                j-1>=0 ? RNA[j-1] : '-',
-                RNA[j],
-                j+1<RNA_len ? RNA[j+1] : '-');
-        m=feature_group_[FG_P3R3].find(buf);
-        if (m!=feature_group_[FG_P3R3].end())
-          edge_weight[i][j] += m->second;
-      }      
-      // Protein 5 - RNA 1
-      if (use_feature_[FG_P5R1] && !feature_group_[FG_P5R1].empty()) {
-	sprintf(buf, "%c%c%c%c%c%c",
-                i-2>=0 ? protein[i-2] : '-',
-                i-1>=0 ? protein[i-1] : '-',
-                protein[i],
-                i+1<Pro_len ? protein[i+1] : '-',
-                i+2<Pro_len ? protein[i+2] : '-',
-                RNA[j]);
-        m=feature_group_[FG_P5R1].find(buf);
-        if (m!=feature_group_[FG_P5R1].end())
-          edge_weight[i][j] += m->second;
-      }      
-      // Protein 1 - RNA 5
-      if (use_feature_[FG_P1R5] && !feature_group_[FG_P1R5].empty()) {
-	sprintf(buf, "%c%c%c%c%c%c",
-                protein[i],
-                j-2>=0 ? RNA[j-2] : '-',
-                j-1>=0 ? RNA[j-1] : '-',
-                RNA[j],
-                j+1<RNA_len ? RNA[j+1] : '-',
-                j+2<RNA_len ? RNA[j+2] : '-');
-        m=feature_group_[FG_P1R5].find(buf);
-        if (m!=feature_group_[FG_P1R5].end())
-          edge_weight[i][j] += m->second;
-      }      
-      // Protein 5 - RNA 5
-      if (use_feature_[FG_P5R5] && !feature_group_[FG_P5R5].empty()) {
-	sprintf(buf, "%c%c%c%c%c%c%c%c%c%c",
-                i-2>=0 ? protein[i-2] : '-',
-                i-1>=0 ? protein[i-1] : '-',
-                protein[i],
-                i+1<Pro_len ? protein[i+1] : '-',
-                i+2<Pro_len ? protein[i+2] : '-',
-                j-2>=0 ? RNA[j-2] : '-',
-                j-1>=0 ? RNA[j-1] : '-',
-                RNA[j],
-                j+1<RNA_len ? RNA[j+1] : '-',
-                j+2<RNA_len ? RNA[j+2] : '-');
-        m=feature_group_[FG_P5R5].find(buf);
-        if (m!=feature_group_[FG_P5R5].end())
-          edge_weight[i][j] += m->second;
-      }      
+      extract_feature(i, j, e);
     }
   }
 }
+
+struct CountFeature
+{
+  CountFeature(std::vector<std::map<std::string,uint> >& fc, VU& tc)
+    : fc_(fc), tc_(tc)
+  { }
+
+  void operator()(uint fgroup, const char* fname, uint i, uint j)
+  {
+    fc_[fgroup].insert(std::make_pair(std::string(fname),0u)).first->second++;
+    tc_[fgroup]++;
+  }
+
+  std::vector<std::map<std::string,uint> >& fc_;
+  VU& tc_;
+};
 
 void
 ssvm::
 count_feature(const VVU& edge, std::vector<std::map<std::string,uint> >& fc, VU& tc) const
 {
-  char buf[20];
+  CountFeature c(fc, tc);
   for (uint i=0; i!=Pro_len; ++i) {
     for (uint j=0; j!=RNA_len; ++j) {
-      if (edge[i][j]==0) continue;
-      // RNAss 
-      if(use_feature_[FG_Rss5]) {
-        sprintf(buf, "%c%c%c%c%c",
-                j-2>=0 ? rna_ss[j-2] : '-',
-                j-1>=0 ? rna_ss[j-1] : '-',
-                rna_ss[j],
-                j+1<RNA_len ? rna_ss[j+1] : '-',
-                j+2<RNA_len ? rna_ss[j+2] : '-');
-        fc[FG_Rss5].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_Rss5]++;
+      if (edge[i][j]) {
+        extract_feature(i, j, c);
       }
-      // Proteinss 
-      if (use_feature_[FG_Pss5]) {
-	sprintf(buf, "%c%c%c%c%c",
-                i-2>=0 ? pro_ss[i-2] : '-',
-                i-1>=0 ? pro_ss[i-1] : '-',
-                pro_ss[i],
-                i+1<Pro_len ? pro_ss[i+1] : '-',
-                i+2<Pro_len ? pro_ss[i+2] : '-');
-        fc[FG_Pss5].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_Pss5]++;
-      }
-      // Pro-RNAss 
-      if (use_feature_[FG_PsRs]) {
-	sprintf(buf, "%c%c", pro_ss[i], rna_ss[j]);
-        fc[FG_PsRs].insert(std::make_pair(std::string(buf),0u)).first->second++;
-      }
-      // Pro-RNA ss 3-3
-      if (use_feature_[FG_Ps3Rs3]) {
-	sprintf(buf, "%c%c%c%c%c%c",
-                i-1>=0 ? pro_ss[i-1] : '-',
-                pro_ss[i],
-                i+1<=Pro_len ? pro_ss[i+1] :'-',
-                j-1>=0 ? rna_ss[j-1] : '-',
-                rna_ss[j],
-                j+1<=RNA_len ? rna_ss[j+1] : '-');
-        fc[FG_Ps3Rs3].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_Ps3Rs3]++;
-      }
-      // AAp
-      if (use_feature_[FG_AAp]) {
-        sprintf(buf, "%d", AA_7group(protein[i]));
-        fc[FG_AAp].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_AAp]++;
-      }
-      // AAab
-      if (use_feature_[FG_AAab]) {
-        sprintf(buf, "%d", AA_3ab(protein[i]));
-        fc[FG_AAab].insert(std::make_pair(std::string(buf),0u)).first->second++;
-      }
-      // AAh
-      if (use_feature_[FG_AAh]) {
-        sprintf(buf, "%d", AA_3hydro(protein[i]));
-        fc[FG_AAh].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_AAh]++;
-      }
-      // Rpp
-      if (use_feature_[FG_Rpp]) {
-        sprintf(buf, "%d", RNA_2pp(RNA[j]));
-        fc[FG_Rpp].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_Rpp]++;
-      }
-      // Protein 1 -
-      if (use_feature_[FG_P1]) {
-        sprintf(buf, "%c", protein[i]);
-        fc[FG_P1].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_P1]++;
-      }      
-      // Protein 1 - RNA 1
-      if (use_feature_[FG_P1R1]) {
-        sprintf(buf, "%c%c", protein[i], RNA[j]);
-        fc[FG_P1R1].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_P1R1]++;
-      }      
-      // Protein 3 - RNA 1
-      if (use_feature_[FG_P3R1]) {
-	sprintf(buf, "%c%c%c%c",
-                i-1>=0 ? protein[i-1] : '-',
-                protein[i],
-                i+1<Pro_len ? protein[i+1] : '-',
-                RNA[j]);
-        fc[FG_P3R1].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_P3R1]++;
-      }      
-      // Protein 3 - RNA 3
-      if (use_feature_[FG_P3R3]) {
-	sprintf(buf, "%c%c%c%c%c%c",
-                i-1>=0 ? protein[i-1] : '-',
-                protein[i],
-                i+1<Pro_len ? protein[i+1] : '-',
-                j-1>=0 ? RNA[j-1] : '-',
-                RNA[j],
-                j+1<RNA_len ? RNA[j+1] : '-');
-        fc[FG_P3R3].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_P3R3]++;
-      }      
-      // Protein 5 - RNA 1
-      if (use_feature_[FG_P5R1]) {
-	sprintf(buf, "%c%c%c%c%c%c",
-                i-2>=0 ? protein[i-2] : '-',
-                i-1>=0 ? protein[i-1] : '-',
-                protein[i],
-                i+1<Pro_len ? protein[i+1] : '-',
-                i+2<Pro_len ? protein[i+2] : '-',
-                RNA[j]);
-        fc[FG_P5R1].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_P5R1]++;
-      }      
-      // Protein 1 - RNA 5
-      if (use_feature_[FG_P1R5]) {
-	sprintf(buf, "%c%c%c%c%c%c",
-                protein[i],
-                j-2>=0 ? RNA[j-2] : '-',
-                j-1>=0 ? RNA[j-1] : '-',
-                RNA[j],
-                j+1<RNA_len ? RNA[j+1] : '-',
-                j+2<RNA_len ? RNA[j+2] : '-');
-        fc[FG_P1R5].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_P1R5]++;
-      }      
-      // Protein 5 - RNA 5
-      if (use_feature_[FG_P5R5]) {
-	sprintf(buf, "%c%c%c%c%c%c%c%c%c%c",
-                i-2>=0 ? protein[i-2] : '-',
-                i-1>=0 ? protein[i-1] : '-',
-                protein[i],
-                i+1<Pro_len ? protein[i+1] : '-',
-                i+2<Pro_len ? protein[i+2] : '-',
-                j-2>=0 ? RNA[j-2] : '-',
-                j-1>=0 ? RNA[j-1] : '-',
-                RNA[j],
-                j+1<RNA_len ? RNA[j+1] : '-',
-                j+2<RNA_len ? RNA[j+2] : '-');
-        fc[FG_P5R5].insert(std::make_pair(std::string(buf),0u)).first->second++;
-        tc[FG_P5R5]++;
-      }      
     }
   }
 }
