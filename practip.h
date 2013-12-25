@@ -1,8 +1,9 @@
-#ifndef _TEST_SSVM_SEMI_R_H_
-#define _TEST_SSVM_SEMI_R_H_
+#ifndef _INC_PRACTIP_H_
+#define _INC_PRACTIP_H_
 
 #include <vector>
 #include <string>
+#include <map>
 
 typedef unsigned int uint;
 typedef std::vector<float> VF;
@@ -56,45 +57,19 @@ public:
   };
 public:
   PRactIP()
-    : labeled_aa_(), labeled_rna_(), labeled_matching_(),
-      unlabeled_aa_(), unlabeled_rna_(), 
-      feature_weight_(FG_NUM),
+    : feature_weight_(FG_NUM),
       feature_count_(FG_NUM),
       feature_group_weight_(FG_NUM, 0.0),
       feature_group_count_(FG_NUM, 0),
       use_feature_(FG_NUM, true),
-      positive_penalty_(1.0),
-      negative_penalty_(1.0),
-      lambda_(1.0),
-      mu_(1.0),
-      eta0_(0.5),
-      n_th_(1),
-      t_max_(1000),
-      u_max_(1000)
+      n_th_(1)
   { }
   
-private:
-  std::vector<AA> labeled_aa_;
-  std::vector<RNA> labeled_rna_;
-  std::vector<VVU> labeled_matching_;
-  std::vector<AA> unlabeled_aa_;
-  std::vector<RNA> unlabeled_rna_;
-  
-  std::vector<FM> feature_weight_;
-  std::vector<FC> feature_count_;
-  VF feature_group_weight_;
-  VU feature_group_count_;
-  std::vector<bool> use_feature_;
+public:
+  PRactIP& parse_options(int& argc, char**& argv);
+  int run();
 
-  float positive_penalty_;
-  float negative_penalty_;
-  float lambda_;
-  float mu_;
-  float eta0_;
-  uint n_th_;
-  uint t_max_;
-  uint u_max_;
-
+private:  
   uint load_labeled_data(const std::string& filename);
   uint load_unlabeled_data(const std::string& filename);
   void supervised_training();
@@ -117,6 +92,30 @@ private:
   void count_feature(const AA& aa, const RNA& rna, const VVU& edge, std::vector<FC>& fc, VU& tc) const;
   float regularization_fobos(float eta);
   float predict_matching(const VVF& edge_weight, VVU& p) const;
+
+private:
+  std::vector<AA> labeled_aa_;
+  std::vector<RNA> labeled_rna_;
+  std::vector<VVU> labeled_matching_;
+  std::vector<AA> unlabeled_aa_;
+  std::vector<RNA> unlabeled_rna_;
+  
+  std::vector<FM> feature_weight_;
+  std::vector<FC> feature_count_;
+  VF feature_group_weight_;
+  VU feature_group_count_;
+  std::vector<bool> use_feature_;
+
+  float positive_penalty_;
+  float negative_penalty_;
+  float lambda_;
+  float mu_;
+  float eta0_;
+  uint n_th_;
+  uint t_max_;
+  uint u_max_;
+  uint cv_fold_;
+
 };
 
 #endif

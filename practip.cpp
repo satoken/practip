@@ -14,7 +14,8 @@
 
 
 #include "ip.h"
-#include "TEST_ssvm_semi_r.h"
+#include "practip.h"
+#include "cmdline.h"
 
 #define FOREACH(itr, i, v) for (itr i=(v).begin(); i!=(v).end(); ++i)
 
@@ -791,3 +792,60 @@ pp2(char b)
   else{return 1;}
 }
 
+PRactIP&
+PRactIP::
+parse_options(int& argc, char**& argv)
+{
+  gengetopt_args_info args_info;
+  if (cmdline_parser(argc, argv, &args_info)!=0) exit(1);
+
+  positive_penalty_ = args_info.pos_w_arg;
+  negative_penalty_ = args_info.neg_w_arg;
+  lambda_ = args_info.discriminative_arg;
+  mu_ = args_info.generative_arg;
+  eta0_ = args_info.eta_arg;
+  t_max_ = args_info.d_max_arg;
+  u_max_ = args_info.g_max_arg;
+  cv_fold_ = args_info.cross_validation_arg;
+  
+  if (args_info.inputs_num==0)
+  {
+    cmdline_parser_print_help();
+    cmdline_parser_free(&args_info);
+    exit(1);
+  }
+
+  if (args_info.inputs_num>0)
+    load_labeled_data(args_info.inputs[0]);
+  if (args_info.inputs_num>1)
+    load_unlabeled_data(args_info.inputs[1]);
+
+  cmdline_parser_free(&args_info);
+  return *this;
+}
+
+int
+PRactIP::
+run()
+{
+  if (cv_fold_>0) {
+    if (unlabeled_aa_.size()>0)
+      semisupervised_cross_validation(cv_fold_);
+    else
+      supervised_cross_validation(cv_fold_);
+  } else {
+    assert(!"not implemented yet");
+  }
+  return 0;
+}
+
+int
+main(int argc, char* argv[])
+{
+  try {
+    PRactIP practip;
+    return practip.parse_options(argc, argv).run();
+  } catch (const char* str) {
+    std::cerr << str << std::endl;
+  }
+}
