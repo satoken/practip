@@ -119,6 +119,7 @@ load_labeled_data(const std::string& filename)
   std::string aa_seq, rna_seq, matching;
   std::ifstream is(filename.c_str());
   while (is >> aa_seq >> rna_seq >> matching) {
+    std::cout << aa_seq << " " << rna_seq << " " << matching << std::endl;
     labeled_aa_.push_back(AA());
     labeled_aa_.back().read(aa_seq);
     labeled_rna_.push_back(RNA());
@@ -687,7 +688,8 @@ read(const std::string& filename)
   }
   fclose(fp);
 
-  fp = fopen((filename+".ss2").c_str(), "r");
+#if 0
+  fp = fopen((filename+".2nd").c_str(), "r");
   while (fgets(line, sizeof(line), fp)) {
     for (uint i=0; line[i]!='\0'; ++i) {
       switch (line[i]) {
@@ -699,6 +701,18 @@ read(const std::string& filename)
     }
     this->ss += line;
   }
+#else
+  fp = fopen((filename+".ss2").c_str(), "r");
+  while (fgets(line, sizeof(line), fp)) {
+    if (line[0]=='\n' || line[0]=='#') continue;
+    switch (line[7]) {
+      case 'C': ss.push_back('.'); break;
+      case 'E': ss.push_back('>'); break;
+      case 'H': ss.push_back('='); break;
+      default: assert(!"unreachable"); break;
+    }
+  }
+#endif
   fclose(fp);
 
   assert(this->seq.size()==this->ss.size());
@@ -726,6 +740,7 @@ read(const std::string& filename)
   sprintf(cmd, "%s %s", prog, filename.c_str());
   fp = popen(cmd, "r");
   while (fgets(line, sizeof(line), fp)) {
+    if (line[0]=='>') continue;
     if (strchr(".()[]{}<>", line[0])) {
       for (uint i=0; line[i]!='\0'; ++i) {
         switch (line[i]) {
@@ -737,6 +752,7 @@ read(const std::string& filename)
           case '<': case '>':
             line[i]='|'; break;
           case '\n':
+          case ' ':
             line[i]='\0'; break;
         }
       }
