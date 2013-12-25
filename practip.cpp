@@ -118,13 +118,14 @@ load_labeled_data(const std::string& filename)
 {
   std::string aa_seq, rna_seq, matching;
   std::ifstream is(filename.c_str());
+  std::cout << "loading labeled data" << std::endl;
   while (is >> aa_seq >> rna_seq >> matching) {
     std::cout << aa_seq << " " << rna_seq << " " << matching << std::endl;
     labeled_aa_.push_back(AA());
-    labeled_aa_.back().read(aa_seq);
+    uint aa_len=labeled_aa_.back().read(aa_seq);
     labeled_rna_.push_back(RNA());
     labeled_rna_.back().read(rna_seq);
-    labeled_matching_.push_back(VVU());
+    labeled_matching_.push_back(VVU(aa_len));
     read_correct_matching(matching, labeled_matching_.back());
   }
   return labeled_aa_.size();
@@ -136,7 +137,9 @@ load_unlabeled_data(const std::string& filename)
 {
   std::string aa_seq, rna_seq;
   std::ifstream is(filename.c_str());
+  std::cout << "loading unlabeled data" << std::endl;
   while (is >> aa_seq >> rna_seq) {
+    std::cout << aa_seq << " " << rna_seq << std::endl;
     unlabeled_aa_.push_back(AA());
     unlabeled_aa_.back().read(aa_seq);
     unlabeled_rna_.push_back(RNA());
@@ -160,12 +163,15 @@ supervised_training(const VU& use_idx)
 {
   VU idx(use_idx);
   for (uint t=0; t!=t_max_; ++t) {
-    float eta=eta0_/std::sqrt(t);
+    std::cout << ">itr " << t << std::endl;
+    float eta=eta0_/std::sqrt(t+1);
     float total_loss=0.0;
     std::random_shuffle(idx.begin(), idx.end());
     FOREACH (VU::const_iterator, it, idx) {
+      std::cout << " " << *it;
       total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_matching_[*it], eta);
     }
+    std::cout << std::endl;
   }
 }
 
@@ -195,13 +201,14 @@ cross_validation(uint n, void (PRactIP::*training)(const VU&))
   for (uint i=0; i!=n; ++i) {
     VU train;
     VU test;
-    for (uint j=0; j!=labeled_aa_.size(); ++i) {
+    for (uint j=0; j!=labeled_aa_.size(); ++j) {
       if (j%n==i)
         test.push_back(j);
       else
         train.push_back(j);
     }
 
+    std::cout << "[Set " << i << "]" << std::endl;
     (this->*training)(train);
     
     FOREACH (VU::const_iterator, j, test) {
@@ -215,25 +222,25 @@ cross_validation(uint n, void (PRactIP::*training)(const VU&))
       aa_summary.add(aa_acc);
       rna_summary.add(rna_acc);
     }
-    edge_summary.summary();
-    aa_summary.summary();
-    rna_summary.summary();
-    std::cout << "Edge: "
-              << "PPV=" << edge_summary.ppv_avg << "(" << edge_summary.ppv_sd << ") "
-              << "SEN=" << edge_summary.sen_avg << "(" << edge_summary.sen_sd << ") "
-              << "F=" << edge_summary.fval_avg << "(" << edge_summary.fval_sd << ") "
-              << std::endl;
-    std::cout << "AA: "
-              << "PPV=" << aa_summary.ppv_avg << "(" << aa_summary.ppv_sd << ") "
-              << "SEN=" << aa_summary.sen_avg << "(" << aa_summary.sen_sd << ") "
-              << "F=" << aa_summary.fval_avg << "(" << aa_summary.fval_sd << ") "
-              << std::endl;
-    std::cout << "RNA: "
-              << "PPV=" << rna_summary.ppv_avg << "(" << rna_summary.ppv_sd << ") "
-              << "SEN=" << rna_summary.sen_avg << "(" << rna_summary.sen_sd << ") "
-              << "F=" << rna_summary.fval_avg << "(" << rna_summary.fval_sd << ") "
-              << std::endl;
   }
+  edge_summary.summary();
+  aa_summary.summary();
+  rna_summary.summary();
+  std::cout << "Edge: "
+            << "PPV=" << edge_summary.ppv_avg << "(" << edge_summary.ppv_sd << ") "
+            << "SEN=" << edge_summary.sen_avg << "(" << edge_summary.sen_sd << ") "
+            << "F=" << edge_summary.fval_avg << "(" << edge_summary.fval_sd << ") "
+            << std::endl;
+  std::cout << "AA: "
+            << "PPV=" << aa_summary.ppv_avg << "(" << aa_summary.ppv_sd << ") "
+            << "SEN=" << aa_summary.sen_avg << "(" << aa_summary.sen_sd << ") "
+            << "F=" << aa_summary.fval_avg << "(" << aa_summary.fval_sd << ") "
+            << std::endl;
+  std::cout << "RNA: "
+            << "PPV=" << rna_summary.ppv_avg << "(" << rna_summary.ppv_sd << ") "
+            << "SEN=" << rna_summary.sen_avg << "(" << rna_summary.sen_sd << ") "
+            << "F=" << rna_summary.fval_avg << "(" << rna_summary.fval_sd << ") "
+            << std::endl;
 }
 
 void
@@ -277,7 +284,7 @@ semisupervised_training(const VU& use_idx)
     std::swap(feature_count_, fc);
     std::swap(feature_group_count_, tc);
 
-    float eta=eta0_/std::sqrt(u);
+    float eta=eta0_/std::sqrt(u+1);
     float total_loss=0.0;
     std::random_shuffle(idx.begin(), idx.end());
     FOREACH (VU::const_iterator, it, idx) {
@@ -312,7 +319,7 @@ read_correct_matching(const std::string& filename, VVU& correct_edges) const
 {
   uint r, a;
   std::ifstream is(filename.c_str());
-  while (is >> r >> a)
+  while (is >> a >> r)
     correct_edges[a].push_back(r);
 }
 
