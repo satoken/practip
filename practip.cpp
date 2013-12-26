@@ -103,10 +103,10 @@ calculate_accuracy(const PRactIP::AA& aa, const PRactIP::RNA& rna,
   std::vector<bool> p_rna(rna.seq.size(), false);
   for (uint i=0; i!=correct_edges.size(); ++i)
     FOREACH (VU::const_iterator, j, correct_edges[i])
-      c_edge[aa.seq.size()*i+*j]=c_aa[i]=c_rna[*j]=true;
+      c_edge[rna.seq.size()*i+*j]=c_aa[i]=c_rna[*j]=true;
   for (uint i=0; i!=predicted_edges.size(); ++i)
     FOREACH (VU::const_iterator, j, predicted_edges[i])
-      p_edge[aa.seq.size()*i+*j]=p_aa[i]=p_rna[*j]=true;
+      p_edge[rna.seq.size()*i+*j]=p_aa[i]=p_rna[*j]=true;
   edge_acc.calculate(c_edge, p_edge);
   aa_acc.calculate(c_aa, p_aa);
   rna_acc.calculate(c_rna, p_rna);
