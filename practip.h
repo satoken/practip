@@ -106,14 +106,14 @@ private:
   VU feature_group_count_;
   std::vector<bool> use_feature_;
 
-  float positive_penalty_;
-  float negative_penalty_;
+  float pos_w_;
+  float neg_w_;
   float lambda_;
   float mu_;
   float eta0_;
   uint n_th_;
-  uint t_max_;
-  uint u_max_;
+  uint d_max_;
+  uint g_max_;
   uint cv_fold_;
 
 };
