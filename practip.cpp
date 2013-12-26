@@ -67,6 +67,7 @@ struct AccuracySummary
     sen += acc.sen;
     sen2 += acc.sen*acc.sen;
     fval2 += acc.fval*acc.fval;
+    n++;
   }
 
   float avg(float sum) const
@@ -241,17 +242,23 @@ cross_validation(uint n, void (PRactIP::*training)(const VU&))
   std::cout << "Edge: "
             << "PPV=" << edge_summary.ppv_avg << "(" << edge_summary.ppv_sd << ") "
             << "SEN=" << edge_summary.sen_avg << "(" << edge_summary.sen_sd << ") "
-            << "F=" << edge_summary.fval_avg << "(" << edge_summary.fval_sd << ") "
+            << "F=" << edge_summary.fval_avg << "(" << edge_summary.fval_sd << ") ["
+            << edge_summary.tp << "," << edge_summary.tn << ","
+            << edge_summary.fp << "," << edge_summary.fn << "]"
             << std::endl;
   std::cout << "AA: "
             << "PPV=" << aa_summary.ppv_avg << "(" << aa_summary.ppv_sd << ") "
             << "SEN=" << aa_summary.sen_avg << "(" << aa_summary.sen_sd << ") "
-            << "F=" << aa_summary.fval_avg << "(" << aa_summary.fval_sd << ") "
+            << "F=" << aa_summary.fval_avg << "(" << aa_summary.fval_sd << ") ["
+            << aa_summary.tp << "," << aa_summary.tn << ","
+            << aa_summary.fp << "," << aa_summary.fn << "]"
             << std::endl;
   std::cout << "RNA: "
             << "PPV=" << rna_summary.ppv_avg << "(" << rna_summary.ppv_sd << ") "
             << "SEN=" << rna_summary.sen_avg << "(" << rna_summary.sen_sd << ") "
-            << "F=" << rna_summary.fval_avg << "(" << rna_summary.fval_sd << ") "
+            << "F=" << rna_summary.fval_avg << "(" << rna_summary.fval_sd << ") ["
+            << rna_summary.tp << "," << rna_summary.tn << ","
+            << rna_summary.fp << "," << rna_summary.fn << "]"
             << std::endl;
 }
 
@@ -603,13 +610,9 @@ PRactIP::
 count_feature(const AA& aa, const RNA& rna, const VVU& edge, std::vector<FC>& fc, VU& tc) const
 {
   FeatureCounter c(fc, tc);
-  for (uint i=0; i!=aa.seq.size(); ++i) {
-    for (uint j=0; j!=rna.seq.size(); ++j) {
-      if (edge[i][j]) {
-        extract_feature(aa, rna, i, j, c);
-      }
-    }
-  }
+  for (uint i=0; i!=edge.size(); ++i)
+    FOREACH (VU::const_iterator, j, edge[i])
+      extract_feature(aa, rna, i, *j, c);
 }
 
 static inline

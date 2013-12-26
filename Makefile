@@ -1,6 +1,6 @@
 CXX=g++
 CC=gcc
-CXXFLAGS=-g -Wall -DWITH_GLPK #-D_GLIBCXX_DEBUG
+CXXFLAGS=-g -Wall -DWITH_GLPK -D_GLIBCXX_DEBUG
 
 all: practip
 
