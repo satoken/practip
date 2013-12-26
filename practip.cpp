@@ -163,15 +163,12 @@ supervised_training(const VU& use_idx)
 {
   VU idx(use_idx);
   for (uint t=0; t!=t_max_; ++t) {
-    std::cout << ">itr " << t << std::endl;
     float eta=eta0_/std::sqrt(t+1);
     float total_loss=0.0;
     std::random_shuffle(idx.begin(), idx.end());
     FOREACH (VU::const_iterator, it, idx) {
-      std::cout << " " << *it;
       total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_matching_[*it], eta);
     }
-    std::cout << std::endl;
   }
 }
 
@@ -188,6 +185,21 @@ supervised_training(const AA& aa, const RNA& rna, const VVU& correct_edges, floa
   penalize_correct_matching(edge_weight, correct_edges);
   VVU predicted_edges;
   loss += predict_matching(edge_weight, predicted_edges);
+#if 1
+  for (uint i=0; i!=correct_edges.size(); ++i) {
+    if (!correct_edges[i].empty() || !predicted_edges[i].empty())
+    {
+      std::cout << i << ": [ ";
+      FOREACH (VU::const_iterator, j, correct_edges[i])
+        std::cout << *j << "(" << edge_weight[i][*j] << ") ";
+      std::cout << "], [ ";
+      FOREACH (VU::const_iterator, j, predicted_edges[i])
+        std::cout << *j << "(" << edge_weight[i][*j] << ") ";
+      std::cout << "]" << std::endl;
+    }
+  }
+  std::cout << std::endl;
+#endif  
   update_feature_weight(aa, rna, predicted_edges, correct_edges, eta);
   loss += regularization_fobos(eta);
   return loss;
@@ -512,11 +524,11 @@ penalize_correct_matching(VVF& edge_weight, const VVU& correct_edges) const
 {
   for (uint i=0; i!=edge_weight.size(); ++i) 
     for (uint j=0; j!=edge_weight[i].size(); ++j)
-      edge_weight[i][j] -= negative_penalty_;
+      edge_weight[i][j] += negative_penalty_;
 
   for (uint i=0; i!=correct_edges.size(); ++i)
     FOREACH (VU::const_iterator, j, correct_edges[i])
-      edge_weight[i][*j] += positive_penalty_+negative_penalty_;
+      edge_weight[i][*j] -= positive_penalty_+negative_penalty_;
 }
 
 struct FeatureWeightUpdater
@@ -536,6 +548,10 @@ struct FeatureWeightUpdater
   inline void operator()(uint fgroup, const char* fname, uint i, uint j)
   {
     feature_weight_[fgroup].insert(std::make_pair(std::string(fname),0.0f)).first->second += eta_;
+    if (i==180 && j==71)
+    {
+      std::cout << "";
+    }
     if (feature_group_count_[fgroup]) {
       FC::const_iterator m;
       m=feature_count_[fgroup].find(fname);
