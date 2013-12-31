@@ -3,6 +3,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <stack>
 #include <functional>
 #include <getopt.h>
 #include <cstring>
@@ -808,8 +809,9 @@ predict_interaction(const VVF& int_weight, const VF& aa_weight, const VF& rna_we
   
   IP ip(IP::MAX, n_th_);
 
-  VI x(aa_len, -1), y(rna_len, -1);
-  VVI z(aa_len, VI(rna_len, -1));
+  VI x(aa_len, -1);             // binding site in AA
+  VI y(rna_len, -1);            // binding site in RNA
+  VVI z(aa_len, VI(rna_len, -1)); // interactions
   for (uint i=0; i!=aa_len; ++i)
     if (aa_weight[i]>0.0)
       x[i] = ip.make_variable(aa_weight[i]);
@@ -958,11 +960,27 @@ read(const std::string& filename)
   fp = popen(cmd, "r");
   while (fgets(line, sizeof(line), fp)) {
     if (line[0]=='>') continue;
-    if (strchr(".()[]{}<>", line[0])) {
+#if 1
+    if (strchr(".()", line[0])) {
       for (uint i=0; line[i]!='\0'; ++i) {
         switch (line[i]) {
           case '.':
-            line[i]='.'; break;
+          case '(':
+          case ')':
+            break;
+          case '\n':
+          case ' ':
+            line[i]='\0';
+            break;
+        }
+      }
+      this->ss+=line;
+    }
+#else
+    if (strchr(".()[]{}<>", line[0])) {
+      for (uint i=0; line[i]!='\0'; ++i) {
+        switch (line[i]) {
+          case '.': break;
           case '(': case ')':
           case '[': case ']':
           case '{': case '}':
@@ -975,7 +993,9 @@ read(const std::string& filename)
       }
       this->ss+=line;
     }
+#endif
   }
+  structural_profile(ss, ss);
 
   assert(this->seq.size()==this->ss.size());
   return this->seq.size();
@@ -1023,6 +1043,74 @@ pp2(char b)
 {
   if(b == 'A' || b == 'G'){return 0;}
   else{return 1;}
+}
+
+// static
+void
+PRactIP::RNA::
+structural_profile(const std::string& ss, std::string& profile)
+{
+
+  VU p(ss.size(), -1u);
+  std::string ss2(ss);
+  std::stack<int> st;
+  for (uint i=0; i!=ss2.size(); ++i) {
+    switch (ss2[i]) {
+      case '(':
+        st.push(i);
+        break;
+      case ')':
+        p[st.top()]=i;
+        p[i]=st.top();
+        st.pop();
+        if (ss2[i+1]!=')' || st.top()+1!=p[i]) {
+          ss2[p[i]]='[';
+          ss2[i]=']';
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  profile.resize(ss.size());
+  std::fill(profile.begin(), profile.end(), 'E');
+  std::stack<uint> loop_degree;
+  std::stack<bool> bulge;
+  for (uint i=0; i!=ss2.size(); ++i) {
+    switch (ss2[i]) {
+      case '(':
+        profile[i]='S';
+        break;
+      case ')':
+        profile[i]='S';
+        if (ss2[i-1]==']') bulge.top()=true;
+        break;
+      case '[':
+        profile[i]='S';
+        assert(i==0 || ss2[i-1]!='[');
+        if (i>0 && ss2[i-1]=='(') bulge.top()=true;
+        loop_degree.push(1);
+        bulge.push(false);
+        break;
+      case ']':
+        char ps;
+        profile[i]='S';
+        if (ss2[i-1]==']') bulge.top()=true;
+        switch (loop_degree.top()) {
+          case 1: ps='H'; break;
+          case 2: ps=bulge.top() ? 'B' : 'I'; break;
+          default: ps='M'; break;
+        }
+        loop_degree.pop();
+        loop_degree.top();
+        if (!loop_degree.empty()) loop_degree.top()++;
+        bulge.pop();
+        for (uint j=p[i]+1; j!=i; ++j)
+          if (profile[j]=='E') profile[j]=ps;
+        break;
+    }
+  }
 }
 
 PRactIP&

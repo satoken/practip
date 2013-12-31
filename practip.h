@@ -35,6 +35,7 @@ public:
 
     int read(const std::string& filename);
     static int pp2(char);
+    static void structural_profile(const std::string& ss, std::string& profile);
   };
 
   struct AA {
