@@ -1050,7 +1050,6 @@ void
 PRactIP::RNA::
 structural_profile(const std::string& ss, std::string& profile)
 {
-
   VU p(ss.size(), -1u);
   std::string ss2(ss);
   std::stack<int> st;
@@ -1088,8 +1087,7 @@ structural_profile(const std::string& ss, std::string& profile)
         break;
       case '[':
         profile[i]='S';
-        assert(i==0 || ss2[i-1]!='[');
-        if (i>0 && ss2[i-1]=='(') bulge.top()=true;
+        if (i>0 && (ss2[i-1]=='(' || ss2[i-1]=='[')) bulge.top()=true;
         loop_degree.push(1);
         bulge.push(false);
         break;

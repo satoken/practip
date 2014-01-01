@@ -1,0 +1,10 @@
+syntax: glob
+.hgignore*
+*.o
+GPATH
+GRTAGS
+GTAGS
+practip
+centroid_fold
+input_*
+input_data
