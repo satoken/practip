@@ -34,7 +34,7 @@ public:
     std::string ss;
 
     int read(const std::string& filename);
-    static int pp2(char);
+    static char group2(char);
     static void structural_profile(const std::string& ss, std::string& profile);
   };
 
@@ -43,9 +43,11 @@ public:
     std::string ss;
 
     int read(const std::string& filename);
-    static int group7(char);
-    static int ab3(char);
-    static int hydro3(char);
+
+    static char group10(char a);
+    static char group8(char a);
+    static char group4(char a);
+    static char group2(char a);
   };
 
   // Feature Groups

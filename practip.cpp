@@ -366,92 +366,82 @@ read_correct_interaction(const std::string& filename, VVU& correct_int) const
     correct_int[a].push_back(r);
 }
 
+inline
+static
+char*
+feature_string(const char* str, uint str_len, uint p, uint w, char* fname)
+{
+  char* f=fname;
+  for (uint i=w; i>=1; --i)
+    *f++ = p>=i ? str[p-i] : '-';
+  *f++ = str[p];
+  for (uint i=1; i<=w; ++i)
+    *f++ = p+i<str_len ? str[p+i] : '-';
+  *f++='\0';
+  return fname;
+}
+
+template < class F >
+inline
+static
+char*
+feature_string(const char* str, uint str_len, uint p, uint w, char* fname, F func)
+{
+  char* f=fname;
+  for (uint i=w; i>=1; --i)
+    *f++ = p>=i ? func(str[p-i]) : '-';
+  *f++ = func(str[p]);
+  for (uint i=1; i<=w; ++i)
+    *f++ = p+i<str_len ? func(str[p+i]) : '-';
+  *f++='\0';
+  return fname;
+}
+
+static
+inline
+char
+ident(char a)
+{
+  return a;
+}
+
 template < class Func >
 void
 PRactIP::
 extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func& func) const
 {
+  struct {
+    uint id;
+    const char* aa_str;
+    uint aa_w;
+    char (*aa_trans)(char);
+    const char* rna_str;
+    uint rna_w;
+    char (*rna_trans)(char);
+  } features[] = {
+    { FG_PsRs,   aa.ss.c_str(),  0, ident, rna.ss.c_str(),  0, ident },
+    { FG_Ps3Rs3, aa.ss.c_str(),  1, ident, rna.ss.c_str(),  1, ident },
+    { FG_P1R1,   aa.seq.c_str(), 0, ident, rna.seq.c_str(), 0, ident },
+    { FG_P3R1,   aa.seq.c_str(), 1, ident, rna.seq.c_str(), 0, ident },
+    { FG_P3R3,   aa.seq.c_str(), 1, ident, rna.seq.c_str(), 1, ident },
+    { FG_P5R1,   aa.seq.c_str(), 2, ident, rna.seq.c_str(), 0, ident },
+    { FG_P1R5,   aa.seq.c_str(), 0, ident, rna.seq.c_str(), 2, ident },
+    { FG_P5R5,   aa.seq.c_str(), 2, ident, rna.seq.c_str(), 2, ident },
+    { -1u, NULL, 0, NULL, NULL, 0, NULL }
+  };
+  
   const uint rna_len=rna.seq.size();
   const uint aa_len=aa.seq.size();
   char buf[20];
-  // Pro-RNAss 
-  if (use_feature_[FG_PsRs]) {
-    sprintf(buf, "%c%c", aa.ss[i], rna.ss[j]);
-    func(FG_PsRs, buf, i, j);
+  for (uint k=0; features[k].id!=-1u; ++k) {
+    if (use_feature_[features[k].id]) {
+      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf, features[k].aa_trans);
+      buf[features[k].aa_w*2+1]=',';
+      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf+features[k].aa_w*2+2, features[k].rna_trans);
+      func(features[k].id, buf, i, j);
+      //std::cout << features[k].id << " " << buf << std::endl;
+    }
   }
-  // Pro-RNA ss 3-3
-  if (use_feature_[FG_Ps3Rs3]) {
-    sprintf(buf, "%c%c%c%c%c%c",
-            i>=1 ? aa.ss[i-1] : '-',
-            aa.ss[i],
-            i+1<=aa_len ? aa.ss[i+1] :'-',
-            j>=1 ? rna.ss[j-1] : '-',
-            rna.ss[j],
-            j+1<=rna_len ? rna.ss[j+1] : '-');
-    func(FG_Ps3Rs3, buf, i, j);
-  }
-  // Protein 1 - RNA 1
-  if (use_feature_[FG_P1R1]) {
-    sprintf(buf, "%c%c", aa.seq[i], rna.seq[j]);
-    func(FG_P1R1, buf, i, j);
-  }      
-  // Protein 3 - RNA 1
-  if (use_feature_[FG_P3R1]) {
-    sprintf(buf, "%c%c%c%c",
-            i>=1 ? aa.seq[i-1] : '-',
-            aa.seq[i],
-            i+1<aa_len ? aa.seq[i+1] : '-',
-            rna.seq[j]);
-    func(FG_P3R1, buf, i, j);
-  }      
-  // Protein 3 - RNA 3
-  if (use_feature_[FG_P3R3]) {
-    sprintf(buf, "%c%c%c%c%c%c",
-            i>=1 ? aa.seq[i-1] : '-',
-            aa.seq[i],
-            i+1<aa_len ? aa.seq[i+1] : '-',
-            j>=1 ? rna.seq[j-1] : '-',
-            rna.seq[j],
-            j+1<rna_len ? rna.seq[j+1] : '-');
-    func(FG_P3R3, buf, i, j);
-  }      
-  // Protein 5 - RNA 1
-  if (use_feature_[FG_P5R1]) {
-    sprintf(buf, "%c%c%c%c%c%c",
-            i>=2 ? aa.seq[i-2] : '-',
-            i>=1 ? aa.seq[i-1] : '-',
-            aa.seq[i],
-            i+1<aa_len ? aa.seq[i+1] : '-',
-            i+2<aa_len ? aa.seq[i+2] : '-',
-            rna.seq[j]);
-    func(FG_P5R1, buf, i, j);
-  }      
-  // Protein 1 - RNA 5
-  if (use_feature_[FG_P1R5]) {
-    sprintf(buf, "%c%c%c%c%c%c",
-            aa.seq[i],
-            j>=2 ? rna.seq[j-2] : '-',
-            j>=1 ? rna.seq[j-1] : '-',
-            rna.seq[j],
-            j+1<rna_len ? rna.seq[j+1] : '-',
-            j+2<rna_len ? rna.seq[j+2] : '-');
-    func(FG_P1R5, buf, i, j);
-  }      
-  // Protein 5 - RNA 5
-  if (use_feature_[FG_P5R5]) {
-    sprintf(buf, "%c%c%c%c%c%c%c%c%c%c",
-            i>=2 ? aa.seq[i-2] : '-',
-            i>=1 ? aa.seq[i-1] : '-',
-            aa.seq[i],
-            i+1<aa_len ? aa.seq[i+1] : '-',
-            i+2<aa_len ? aa.seq[i+2] : '-',
-            j>=2 ? rna.seq[j-2] : '-',
-            j>=1 ? rna.seq[j-1] : '-',
-            rna.seq[j],
-            j+1<rna_len ? rna.seq[j+1] : '-',
-            j+2<rna_len ? rna.seq[j+2] : '-');
-    func(FG_P5R5, buf, i, j);
-  }      
 }
 
 template < class Func >
@@ -459,38 +449,30 @@ void
 PRactIP::
 extract_aa_feature(const AA& aa, uint i, Func& func) const
 {
+  struct {
+    uint id;
+    const char* aa_str;
+    uint aa_w;
+    char (*aa_trans)(char);
+  } features[] = {
+    { FG_Pss5, aa.ss.c_str(),  2, ident },
+    { FG_AAp,  aa.seq.c_str(), 0, AA::group10 },
+    { FG_AAab, aa.seq.c_str(), 0, AA::group8 },
+    { FG_AAh,  aa.seq.c_str(), 0, AA::group4 },
+    { FG_P1,   aa.seq.c_str(), 0, ident },    
+    { -1u, NULL, 0, NULL }
+  };
+  
   const uint aa_len=aa.seq.size();
   char buf[20];
-  // Proteinss 
-  if (use_feature_[FG_Pss5]) {
-    sprintf(buf, "%c%c%c%c%c",
-            i>=2 ? aa.ss[i-2] : '-',
-            i>=1 ? aa.ss[i-1] : '-',
-            aa.ss[i],
-            i+1<aa_len ? aa.ss[i+1] : '-',
-            i+2<aa_len ? aa.ss[i+2] : '-');
-    func(FG_Pss5, buf, i);
+
+  for (uint k=0; features[k].id!=-1u; ++k) {
+    if (use_feature_[features[k].id]) {
+      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf, features[k].aa_trans);
+      func(features[k].id, buf, i);
+      //std::cout << features[k].id << " " << buf << std::endl;
+    }
   }
-  // AAp
-  if (use_feature_[FG_AAp]) {
-    sprintf(buf, "%d", AA::group7(aa.seq[i]));
-    func(FG_AAp, buf, i);
-  }
-  // AAab
-  if (use_feature_[FG_AAab]) {
-    sprintf(buf, "%d", AA::ab3(aa.seq[i]));
-    func(FG_AAab, buf, i);
-  }
-  // AAh
-  if (use_feature_[FG_AAh]) {
-    sprintf(buf, "%d", AA::hydro3(aa.seq[i]));
-    func(FG_AAh, buf, i);
-  }
-  // Protein 1 -
-  if (use_feature_[FG_P1]) {
-    sprintf(buf, "%c", aa.seq[i]);
-    func(FG_P1, buf, i);
-  }      
 }
 
 template < class Func >
@@ -498,22 +480,26 @@ void
 PRactIP::
 extract_rna_feature(const RNA& rna, uint j, Func& func) const
 {
+  struct {
+    uint id;
+    const char* rna_str;
+    uint rna_w;
+    char (*rna_trans)(char);
+  } features[] = {
+    { FG_Rss5, rna.ss.c_str(),  2, ident },
+    { FG_Rpp,  rna.seq.c_str(), 0, RNA::group2 },
+    { -1u, NULL, 0, NULL }
+  };
+  
   const uint rna_len=rna.seq.size();
   char buf[20];
-  // RNAss5
-  if (use_feature_[FG_Rss5]) {
-    sprintf(buf, "%c%c%c%c%c",
-            j>=2 ? rna.ss[j-2] : '-',
-            j>=1 ? rna.ss[j-1] : '-',
-            rna.ss[j],
-            j+1<rna_len ? rna.ss[j+1] : '-',
-            j+2<rna_len ? rna.ss[j+2] : '-');
-    func(FG_Rss5, buf, j);
-  }
-  // Rpp
-  if (use_feature_[FG_Rpp]) {
-    sprintf(buf, "%d", RNA::pp2(rna.seq[j]));
-    func(FG_Rpp, buf, j);
+
+  for (uint k=0; features[k].id!=-1u; ++k) {
+    if (use_feature_[features[k].id]) {
+      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf, features[k].rna_trans);
+      func(features[k].id, buf, j);
+      //std::cout << features[k].id << " " << buf << std::endl;
+    }
   }
 }
 
@@ -1001,48 +987,109 @@ read(const std::string& filename)
   return this->seq.size();
 }
 
+// groups defined by Murphy et al., Protein Eng., 2000, 13(3), pp.149-152
 // static
-int
+char
 PRactIP::AA::
-group7(char a)
+group10(char a)
 {
-  if(a == 'A' || a == 'G' || a == 'V') {return 0;}
-  if(a == 'I' || a == 'L' || a == 'F' || a == 'P') {return 1;}
-  if(a == 'Y' || a == 'M' || a == 'T' || a == 'S') {return 2;}
-  if(a == 'H' || a == 'N' || a == 'Q' || a == 'W') {return 3;}
-  if(a == 'R' || a == 'K') {return 4;}
-  if(a == 'D' || a == 'E') {return 5;}
-  if(a == 'C') {return 6;}
-  return -1;
+  switch (a) {
+    case 'L': case 'V': case 'I': case 'M':
+      return 'I'; break; // the smallest alphabet is used as the representative
+    case 'C':
+      return 'C'; break;
+    case 'A':
+      return 'A'; break;
+    case 'G':
+      return 'G'; break;
+    case 'S': case 'T':
+      return 'S'; break;    
+    case 'P':
+      return 'P'; break;
+    case 'F': case 'Y': case 'W':
+      return 'F'; break;
+    case 'E': case 'D': case 'N': case 'Q':
+      return 'D'; break;
+    case 'K': case 'R':
+      return 'K'; break;
+    case 'H':
+      return 'H'; break;
+  }
+  return a;
 }
 
 // static
-int
+char
 PRactIP::AA::
-ab3(char a)
+group8(char a)
 {
-  if(a == 'D' || a == 'E') {return 0;}
-  if(a == 'R' || a == 'H' || a == 'K') {return 1;}
-  else{return 2;}
+  switch (a) {
+    case 'L': case 'V': case 'I': case 'M': case 'C':
+      return 'C'; break;
+    case 'A': case 'G':
+      return 'A'; break;
+    case 'S': case 'T':
+      return 'S'; break;    
+    case 'P':
+      return 'P'; break;
+    case 'F': case 'Y': case 'W':
+      return 'F'; break;
+    case 'E': case 'D': case 'N': case 'Q':
+      return 'D'; break;
+    case 'K': case 'R':
+      return 'K'; break;
+    case 'H':
+      return 'H'; break;
+  }
+  return a;
 }
 
 // static
-int
+char
 PRactIP::AA::
-hydro3(char a)
+group4(char a)
 {
-  if(a == 'A' || a == 'M' || a == 'C' || a == 'F' || a == 'L' || a == 'V' || a == 'I'){return 0;}
-  if(a == 'R' || a == 'K' || a == 'Q' || a == 'N' || a == 'E' || a == 'D' || a == 'H'){return 1;}
-  else{return 2;}
+  switch (a) {
+    case 'L': case 'V': case 'I': case 'M': case 'C':
+      return 'C'; break;
+    case 'A': case 'G': case 'S': case 'T': case 'P':
+      return 'A'; break;
+    case 'F': case 'Y': case 'W':
+      return 'F'; break;
+    case 'E': case 'D': case 'N': case 'Q': case 'K': case 'R': case 'H':
+      return 'E'; break;
+  }
+  return a;
+}
+
+// static
+char
+PRactIP::AA::
+group2(char a)
+{
+  switch (a) {
+    case 'L': case 'V': case 'I': case 'M': case 'C':
+    case 'A': case 'G': case 'S': case 'T': case 'P':
+    case 'F': case 'Y': case 'W':
+      return 'A'; break;
+    case 'E': case 'D': case 'N': case 'Q': case 'K': case 'R': case 'H':
+      return 'D'; break;
+  }
+  return a;
 }
 
 //static
-int
+char
 PRactIP::RNA::
-pp2(char b)
+group2(char b)
 {
-  if(b == 'A' || b == 'G'){return 0;}
-  else{return 1;}
+  switch (b) {
+    case 'A': case 'G':
+      return 'R'; break;
+    case 'C': case 'T': case 'U':
+      return 'Y'; break;
+  }
+  return b;
 }
 
 // static
