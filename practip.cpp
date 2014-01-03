@@ -214,7 +214,7 @@ supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, float 
     if (!correct_int[i].empty() || !predicted_int[i].empty())
     {
       std::cout << i << ": [ ";
-      FOREACH (VU::const_iterator, j, correct_ints[i])
+      FOREACH (VU::const_iterator, j, correct_int[i])
         std::cout << *j << "(" << int_weight[i][*j] << ") ";
       std::cout << "], [ ";
       FOREACH (VU::const_iterator, j, predicted_int[i])
@@ -381,30 +381,6 @@ feature_string(const char* str, uint str_len, uint p, uint w, char* fname)
   return fname;
 }
 
-template < class F >
-inline
-static
-char*
-feature_string(const char* str, uint str_len, uint p, uint w, char* fname, F func)
-{
-  char* f=fname;
-  for (uint i=w; i>=1; --i)
-    *f++ = p>=i ? func(str[p-i]) : '-';
-  *f++ = func(str[p]);
-  for (uint i=1; i<=w; ++i)
-    *f++ = p+i<str_len ? func(str[p+i]) : '-';
-  *f++='\0';
-  return fname;
-}
-
-static
-inline
-char
-ident(char a)
-{
-  return a;
-}
-
 template < class Func >
 void
 PRactIP::
@@ -414,20 +390,22 @@ extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func& func) co
     uint id;
     const char* aa_str;
     uint aa_w;
-    char (*aa_trans)(char);
     const char* rna_str;
     uint rna_w;
-    char (*rna_trans)(char);
   } features[] = {
-    { FG_PsRs,   aa.ss.c_str(),  0, ident, rna.ss.c_str(),  0, ident },
-    { FG_Ps3Rs3, aa.ss.c_str(),  1, ident, rna.ss.c_str(),  1, ident },
-    { FG_P1R1,   aa.seq.c_str(), 0, ident, rna.seq.c_str(), 0, ident },
-    { FG_P3R1,   aa.seq.c_str(), 1, ident, rna.seq.c_str(), 0, ident },
-    { FG_P3R3,   aa.seq.c_str(), 1, ident, rna.seq.c_str(), 1, ident },
-    { FG_P5R1,   aa.seq.c_str(), 2, ident, rna.seq.c_str(), 0, ident },
-    { FG_P1R5,   aa.seq.c_str(), 0, ident, rna.seq.c_str(), 2, ident },
-    { FG_P5R5,   aa.seq.c_str(), 2, ident, rna.seq.c_str(), 2, ident },
-    { -1u, NULL, 0, NULL, NULL, 0, NULL }
+    { FG_P_3_R_3,      aa.seq.c_str(), 1, rna.seq.c_str(), 1 },
+    { FG_P_5_R_5,      aa.seq.c_str(), 2, rna.seq.c_str(), 2 },
+    { FG_Pss_3_Rss_3,  aa.ss.c_str(),  1, rna.ss.c_str(),  1 },
+    { FG_Pss_5_Rss_5,  aa.ss.c_str(),  2, rna.ss.c_str(),  2 },
+    { FG_Pg10_3_R_3,   aa.g10.c_str(), 1, rna.seq.c_str(), 1 },
+    { FG_Pg10_3_Rss_3, aa.g10.c_str(), 1, rna.ss.c_str(),  1 },
+    { FG_Pg10_5_R_5,   aa.g10.c_str(), 2, rna.seq.c_str(), 2 },
+    { FG_Pg10_5_Rss_5, aa.g10.c_str(), 2, rna.ss.c_str(),  2 },
+    { FG_Pg4_3_R_3,    aa.g4.c_str(),  1, rna.seq.c_str(), 1 },
+    { FG_Pg4_3_Rss_3,  aa.g4.c_str(),  1, rna.ss.c_str(),  1 },
+    { FG_Pg4_5_R_5,    aa.g4.c_str(),  2, rna.seq.c_str(), 2 },
+    { FG_Pg4_5_Rss_5,  aa.g4.c_str(),  2, rna.ss.c_str(),  2 },
+    { -1u, NULL, 0, NULL, 0 }
   };
   
   const uint rna_len=rna.seq.size();
@@ -435,9 +413,9 @@ extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func& func) co
   char buf[20];
   for (uint k=0; features[k].id!=-1u; ++k) {
     if (use_feature_[features[k].id]) {
-      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf, features[k].aa_trans);
+      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf);
       buf[features[k].aa_w*2+1]=',';
-      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf+features[k].aa_w*2+2, features[k].rna_trans);
+      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf+features[k].aa_w*2+2);
       func(features[k].id, buf, i, j);
       //std::cout << features[k].id << " " << buf << std::endl;
     }
@@ -453,14 +431,16 @@ extract_aa_feature(const AA& aa, uint i, Func& func) const
     uint id;
     const char* aa_str;
     uint aa_w;
-    char (*aa_trans)(char);
   } features[] = {
-    { FG_Pss5, aa.ss.c_str(),  2, ident },
-    { FG_AAp,  aa.seq.c_str(), 0, AA::group10 },
-    { FG_AAab, aa.seq.c_str(), 0, AA::group8 },
-    { FG_AAh,  aa.seq.c_str(), 0, AA::group4 },
-    { FG_P1,   aa.seq.c_str(), 0, ident },    
-    { -1u, NULL, 0, NULL }
+    { FG_P_3,    aa.seq.c_str(), 1 },
+    { FG_P_5,    aa.seq.c_str(), 2 },
+    { FG_Pss_3,  aa.ss.c_str(),  1 },
+    { FG_Pss_5,  aa.ss.c_str(),  2 },
+    { FG_Pg10_5, aa.g10.c_str(), 2 },
+    { FG_Pg10_7, aa.g10.c_str(), 3 },
+    { FG_Pg4_5,  aa.g4.c_str(),  2 },
+    { FG_Pg4_7,  aa.g4.c_str(),  3 },
+    { -1u, NULL, 0 }
   };
   
   const uint aa_len=aa.seq.size();
@@ -468,7 +448,7 @@ extract_aa_feature(const AA& aa, uint i, Func& func) const
 
   for (uint k=0; features[k].id!=-1u; ++k) {
     if (use_feature_[features[k].id]) {
-      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf, features[k].aa_trans);
+      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf);
       func(features[k].id, buf, i);
       //std::cout << features[k].id << " " << buf << std::endl;
     }
@@ -484,11 +464,12 @@ extract_rna_feature(const RNA& rna, uint j, Func& func) const
     uint id;
     const char* rna_str;
     uint rna_w;
-    char (*rna_trans)(char);
   } features[] = {
-    { FG_Rss5, rna.ss.c_str(),  2, ident },
-    { FG_Rpp,  rna.seq.c_str(), 0, RNA::group2 },
-    { -1u, NULL, 0, NULL }
+    { FG_R_3,   rna.seq.c_str(), 1 },
+    { FG_R_5,   rna.seq.c_str(), 2 },
+    { FG_Rss_3, rna.ss.c_str(),  1 },
+    { FG_Rss_5, rna.ss.c_str(),  2 },
+    { -1u, NULL, 0 }
   };
   
   const uint rna_len=rna.seq.size();
@@ -496,7 +477,7 @@ extract_rna_feature(const RNA& rna, uint j, Func& func) const
 
   for (uint k=0; features[k].id!=-1u; ++k) {
     if (use_feature_[features[k].id]) {
-      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf, features[k].rna_trans);
+      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf);
       func(features[k].id, buf, j);
       //std::cout << features[k].id << " " << buf << std::endl;
     }
@@ -654,7 +635,9 @@ struct FeatureWeightUpdater
 
   inline void operator()(uint fgroup, const char* fname, uint i=-1u, uint j=-1u)
   {
+    //std::cout << fgroup << ":" << fname << "=" << feature_weight_[fgroup][fname]; 
     feature_weight_[fgroup].insert(std::make_pair(std::string(fname),0.0f)).first->second += eta_;
+    //std::cout << " -> " << feature_weight_[fgroup][fname] << std::endl;
     if (feature_group_count_[fgroup]) {
       FC::const_iterator m;
       m=feature_count_[fgroup].find(fname);
@@ -684,7 +667,8 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
       extract_int_feature(aa, rna, i, *j, f);
   //   amino acids
   for (uint i=0; i!=correct_int.size(); ++i)
-    extract_aa_feature(aa, i, f);
+    if (!correct_int[i].empty())
+      extract_aa_feature(aa, i, f);
   //   RNAs
   std::vector<bool> rna_has_int(correct_int.size(), false);
   for (uint i=0; i!=correct_int.size(); ++i)
@@ -702,7 +686,8 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
       extract_int_feature(aa, rna, i, *j, g);
   //   amino acids
   for (uint i=0; i!=predicted_int.size(); ++i)
-    extract_aa_feature(aa, i, g);
+    if (!predicted_int[i].empty())
+      extract_aa_feature(aa, i, g);
   //   RNAs
   std::fill(rna_has_int.begin(), rna_has_int.end(), false);
   for (uint i=0; i!=predicted_int.size(); ++i)
@@ -738,7 +723,8 @@ count_feature(const AA& aa, const RNA& rna, const VVU& predicted_int, std::vecto
     FOREACH (VU::const_iterator, j, predicted_int[i])
       extract_int_feature(aa, rna, i, *j, c);
   for (uint i=0; i!=predicted_int.size(); ++i)
-    extract_aa_feature(aa, i, c);
+    if (!predicted_int[i].empty())
+      extract_aa_feature(aa, i, c);
   std::vector<bool> rna_has_int(predicted_int.size(), false);
   for (uint i=0; i!=predicted_int.size(); ++i)
     FOREACH (VU::const_iterator, j, predicted_int[i])
@@ -763,16 +749,17 @@ PRactIP::
 regularization_fobos(float eta)
 {
   float sum1=0.0;
-  std::vector<FM >::iterator i;
-  for (i=feature_weight_.begin(); i!=feature_weight_.end(); ++i)
+  for (uint i=0; i!=feature_weight_.size(); ++i)
   {
-    FM::iterator j=i->begin();
-    while (j!=i->end()) {
+    FM::iterator j=feature_weight_[i].begin();
+    while (j!=feature_weight_[i].end()) {
+      //std::cout << i << ":" << j->first << "=" << j->second;
       j->second = clip(j->second, eta*lambda_);
+      //std::cout << " => " << j->second << std::endl;
       sum1 += std::abs(j->second);
-      if (j->second==0.0)
-        i->erase(j++);
-      else
+      if (j->second==0.0) {
+        feature_weight_[i].erase(j++);
+      } else
         ++j;
     }
   }
@@ -911,14 +898,23 @@ read(const std::string& filename)
   while (fgets(line, sizeof(line), fp)) {
     if (line[0]=='\n' || line[0]=='#') continue;
     switch (line[7]) {
-      case 'C': ss.push_back('.'); break;
-      case 'E': ss.push_back('>'); break;
-      case 'H': ss.push_back('='); break;
+      case 'C': case 'E': case 'H':
+        ss.push_back(line[7]);
+        break;
       default: assert(!"unreachable"); break;
     }
   }
 #endif
   fclose(fp);
+
+  g10.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g10.begin(), group10);
+  g8.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g8.begin(), group8);
+  g4.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g4.begin(), group4);
+  g2.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g2.begin(), group2);
 
   assert(this->seq.size()==this->ss.size());
   return this->seq.size();
@@ -981,7 +977,11 @@ read(const std::string& filename)
     }
 #endif
   }
+
   structural_profile(ss, ss);
+
+  g2.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g2.begin(), group2);
 
   assert(this->seq.size()==this->ss.size());
   return this->seq.size();

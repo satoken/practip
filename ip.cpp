@@ -90,14 +90,20 @@ public:
 
   double solve()
   {
-    glp_smcp smcp;
-    glp_iocp iocp;
-    glp_init_smcp(&smcp); smcp.msg_lev = GLP_MSG_ERR;
-    glp_init_iocp(&iocp); iocp.msg_lev = GLP_MSG_ERR;
     glp_load_matrix(ip_, ia_.size()-1, &ia_[0], &ja_[0], &ar_[0]);
+#if 1
+    glp_smcp smcp;
+    glp_init_smcp(&smcp); smcp.msg_lev = GLP_MSG_ERR;
     glp_simplex(ip_, &smcp);
+#else
+    glp_iptcp iptcp;
+    glp_init_iptcp(&iptcp); iptcp.msg_lev = GLP_MSG_ERR;
+    glp_interior(ip_, &iptcp);
+#endif
+    glp_iocp iocp;
+    glp_init_iocp(&iocp); iocp.msg_lev = GLP_MSG_ERR;
     glp_intopt(ip_, &iocp);
-    return glp_get_obj_val(ip_);
+    return glp_mip_obj_val(ip_);
   }
 
   double get_value(int col) const

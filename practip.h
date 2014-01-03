@@ -4,12 +4,7 @@
 #include <vector>
 #include <string>
 
-#define USE_SPARSEHASH
-#ifdef USE_SPARSEHASH
-#include <google/sparse_hash_map>
-#else
-#include <map>
-#endif
+#include <unordered_map>
 
 typedef unsigned int uint;
 typedef std::vector<float> VF;
@@ -18,13 +13,8 @@ typedef std::vector<int> VI;
 typedef std::vector<VI> VVI;
 typedef std::vector<uint> VU;
 typedef std::vector<VU> VVU;
-#ifdef USE_SPARSEHASH
-typedef google::sparse_hash_map<std::string,float> FM;
-typedef google::sparse_hash_map<std::string,uint> FC;
-#else
-typedef std::map<std::string,float> FM;
-typedef std::map<std::string,uint> FC;
-#endif
+typedef std::unordered_map<std::string,float> FM;
+typedef std::unordered_map<std::string,uint> FC;
 
 class PRactIP
 {
@@ -32,6 +22,7 @@ public:
   struct RNA {
     std::string seq;
     std::string ss;
+    std::string g2;
 
     int read(const std::string& filename);
     static char group2(char);
@@ -41,7 +32,11 @@ public:
   struct AA {
     std::string seq;
     std::string ss;
-
+    std::string g10;
+    std::string g8;
+    std::string g4;
+    std::string g2;
+    
     int read(const std::string& filename);
 
     static char group10(char a);
@@ -52,21 +47,30 @@ public:
 
   // Feature Groups
   enum {
-    FG_Rss5 = 0,
-    FG_Pss5,
-    FG_PsRs,
-    FG_Ps3Rs3,
-    FG_AAp,
-    FG_AAab,
-    FG_AAh,
-    FG_Rpp,
-    FG_P1,
-    FG_P1R1,
-    FG_P3R1,
-    FG_P3R3,
-    FG_P5R1,
-    FG_P1R5,
-    FG_P5R5,
+    FG_P_3 = 0,
+    FG_P_5,
+    FG_R_3,
+    FG_R_5,
+    FG_P_3_R_3,
+    FG_P_5_R_5,
+    FG_Pss_3,
+    FG_Pss_5,
+    FG_Rss_3,
+    FG_Rss_5,
+    FG_Pss_3_Rss_3,
+    FG_Pss_5_Rss_5,
+    FG_Pg10_5,
+    FG_Pg10_7,
+    FG_Pg10_3_R_3,
+    FG_Pg10_3_Rss_3,
+    FG_Pg10_5_R_5,
+    FG_Pg10_5_Rss_5,
+    FG_Pg4_5,
+    FG_Pg4_7,
+    FG_Pg4_3_R_3,
+    FG_Pg4_3_Rss_3,
+    FG_Pg4_5_R_5,
+    FG_Pg4_5_Rss_5,
     FG_NUM
   };
 public:
