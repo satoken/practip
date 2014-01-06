@@ -3,6 +3,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <stack>
 #include <functional>
 #include <getopt.h>
 #include <cstring>
@@ -93,22 +94,22 @@ struct AccuracySummary
 static
 void
 calculate_accuracy(const PRactIP::AA& aa, const PRactIP::RNA& rna,
-                   const VVU& predicted_edges, const VVU& correct_edges,
-                   Accuracy& edge_acc, Accuracy& aa_acc, Accuracy& rna_acc)
+                   const VVU& predicted_int, const VVU& correct_int,
+                   Accuracy& int_acc, Accuracy& aa_acc, Accuracy& rna_acc)
 {
-  std::vector<bool> c_edge(aa.seq.size()*rna.seq.size(), false);
-  std::vector<bool> p_edge(aa.seq.size()*rna.seq.size(), false);
+  std::vector<bool> c_int(aa.seq.size()*rna.seq.size(), false);
+  std::vector<bool> p_int(aa.seq.size()*rna.seq.size(), false);
   std::vector<bool> c_aa(aa.seq.size(), false);
   std::vector<bool> p_aa(aa.seq.size(), false);
   std::vector<bool> c_rna(rna.seq.size(), false);
   std::vector<bool> p_rna(rna.seq.size(), false);
-  for (uint i=0; i!=correct_edges.size(); ++i)
-    FOREACH (VU::const_iterator, j, correct_edges[i])
-      c_edge[rna.seq.size()*i+*j]=c_aa[i]=c_rna[*j]=true;
-  for (uint i=0; i!=predicted_edges.size(); ++i)
-    FOREACH (VU::const_iterator, j, predicted_edges[i])
-      p_edge[rna.seq.size()*i+*j]=p_aa[i]=p_rna[*j]=true;
-  edge_acc.calculate(c_edge, p_edge);
+  for (uint i=0; i!=correct_int.size(); ++i)
+    FOREACH (VU::const_iterator, j, correct_int[i])
+      c_int[rna.seq.size()*i+*j]=c_aa[i]=c_rna[*j]=true;
+  for (uint i=0; i!=predicted_int.size(); ++i)
+    FOREACH (VU::const_iterator, j, predicted_int[i])
+      p_int[rna.seq.size()*i+*j]=p_aa[i]=p_rna[*j]=true;
+  int_acc.calculate(c_int, p_int);
   aa_acc.calculate(c_aa, p_aa);
   rna_acc.calculate(c_rna, p_rna);
 }
@@ -126,8 +127,8 @@ load_labeled_data(const std::string& filename)
     uint aa_len=labeled_aa_.back().read(aa_seq);
     labeled_rna_.push_back(RNA());
     labeled_rna_.back().read(rna_seq);
-    labeled_matching_.push_back(VVU(aa_len));
-    read_correct_matching(matching, labeled_matching_.back());
+    labeled_int_.push_back(VVU(aa_len));
+    read_correct_interaction(matching, labeled_int_.back());
   }
   return labeled_aa_.size();
 }
@@ -153,6 +154,7 @@ void
 PRactIP::
 supervised_training()
 {
+  // use all labeled data
   VU idx(labeled_aa_.size());
   for (uint i=0; i!=idx.size(); ++i) idx[i]=i;
   supervised_training(idx);
@@ -164,44 +166,65 @@ supervised_training(const VU& use_idx)
 {
   VU idx(use_idx);
   for (uint t=0; t!=d_max_; ++t) {
-    float eta=eta0_/std::sqrt(t+1);
+    float eta=eta0_/std::sqrt(t+1); // update learning rate
     float total_loss=0.0;
-    std::random_shuffle(idx.begin(), idx.end());
+    std::random_shuffle(idx.begin(), idx.end()); // shuffle the order of training data
     FOREACH (VU::const_iterator, it, idx) {
-      total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_matching_[*it], eta);
+      total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_int_[*it], eta);
     }
   }
 }
 
 float
 PRactIP::
-supervised_training(const AA& aa, const RNA& rna, const VVU& correct_edges, float eta)
+calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, const VVU& interactions) const
+{
+  float score = 0.0;
+  for (uint i=0; i!=interactions.size(); ++i)
+    FOREACH (VU::const_iterator, j, interactions[i])
+      score += int_weight[i][*j];
+  for (uint i=0; i!=interactions.size(); ++i)
+    score += aa_weight[i];
+  std::vector<bool> rna_has_int(rna_weight.size(), false);
+  for (uint i=0; i!=interactions.size(); ++i)
+    FOREACH (VU::const_iterator, j, interactions[i])
+      rna_has_int[*j] = true;
+  for (uint j=0; j!=rna_has_int.size(); ++j)
+    if (rna_has_int[j])
+      score += rna_weight[j];
+  return score;
+}
+
+
+float
+PRactIP::
+supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, float eta)
 {
   float loss=0.0;
-  VVF edge_weight;
-  calculate_edge_weight(aa, rna, edge_weight);
-  for (uint i=0; i!=correct_edges.size(); ++i)
-    FOREACH (VU::const_iterator, j, correct_edges[i])
-      loss -= edge_weight[i][*j];
-  penalize_correct_matching(edge_weight, correct_edges);
-  VVU predicted_edges;
-  loss += predict_matching(edge_weight, predicted_edges);
+  VVF int_weight;
+  VF aa_weight, rna_weight;
+  calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
+  loss -= calculate_score(int_weight, aa_weight, rna_weight, correct_int);
+  penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
+  VVU predicted_int;
+  predict_interaction(int_weight, aa_weight, rna_weight, predicted_int);
+  loss += calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
 #if 0
-  for (uint i=0; i!=correct_edges.size(); ++i) {
-    if (!correct_edges[i].empty() || !predicted_edges[i].empty())
+  for (uint i=0; i!=correct_int.size(); ++i) {
+    if (!correct_int[i].empty() || !predicted_int[i].empty())
     {
       std::cout << i << ": [ ";
-      FOREACH (VU::const_iterator, j, correct_edges[i])
-        std::cout << *j << "(" << edge_weight[i][*j] << ") ";
+      FOREACH (VU::const_iterator, j, correct_int[i])
+        std::cout << *j << "(" << int_weight[i][*j] << ") ";
       std::cout << "], [ ";
-      FOREACH (VU::const_iterator, j, predicted_edges[i])
-        std::cout << *j << "(" << edge_weight[i][*j] << ") ";
+      FOREACH (VU::const_iterator, j, predicted_int[i])
+        std::cout << *j << "(" << int_weight[i][*j] << ") ";
       std::cout << "]" << std::endl;
     }
   }
   std::cout << std::endl;
 #endif  
-  update_feature_weight(aa, rna, predicted_edges, correct_edges, eta);
+  update_feature_weight(aa, rna, predicted_int, correct_int, eta);
   loss += regularization_fobos(eta);
   return loss;
 }
@@ -210,7 +233,7 @@ void
 PRactIP::
 cross_validation(uint n, void (PRactIP::*training)(const VU&))
 {
-  AccuracySummary edge_summary, aa_summary, rna_summary;
+  AccuracySummary int_summary, aa_summary, rna_summary;
   for (uint i=0; i!=n; ++i) {
     VU train;
     VU test;
@@ -225,26 +248,26 @@ cross_validation(uint n, void (PRactIP::*training)(const VU&))
     (this->*training)(train);
     
     FOREACH (VU::const_iterator, j, test) {
-      VVU predicted_edges;
-      predict_matching(labeled_aa_[*j], labeled_rna_[*j], predicted_edges);
-      Accuracy edge_acc, aa_acc, rna_acc;
+      VVU predicted_int;
+      predict_interaction(labeled_aa_[*j], labeled_rna_[*j], predicted_int);
+      Accuracy int_acc, aa_acc, rna_acc;
       calculate_accuracy(labeled_aa_[*j], labeled_rna_[*j],
-                         predicted_edges, labeled_matching_[*j],
-                         edge_acc, aa_acc, rna_acc);
-      edge_summary.add(edge_acc);
+                         predicted_int, labeled_int_[*j],
+                         int_acc, aa_acc, rna_acc);
+      int_summary.add(int_acc);
       aa_summary.add(aa_acc);
       rna_summary.add(rna_acc);
     }
   }
-  edge_summary.summary();
+  int_summary.summary();
   aa_summary.summary();
   rna_summary.summary();
-  std::cout << "Edge: "
-            << "PPV=" << edge_summary.ppv_avg << "(" << edge_summary.ppv_sd << ") "
-            << "SEN=" << edge_summary.sen_avg << "(" << edge_summary.sen_sd << ") "
-            << "F=" << edge_summary.fval_avg << "(" << edge_summary.fval_sd << ") ["
-            << edge_summary.tp << "," << edge_summary.tn << ","
-            << edge_summary.fp << "," << edge_summary.fn << "]"
+  std::cout << "Interaction: "
+            << "PPV=" << int_summary.ppv_avg << "(" << int_summary.ppv_sd << ") "
+            << "SEN=" << int_summary.sen_avg << "(" << int_summary.sen_sd << ") "
+            << "F=" << int_summary.fval_avg << "(" << int_summary.fval_sd << ") ["
+            << int_summary.tp << "," << int_summary.tn << ","
+            << int_summary.fp << "," << int_summary.fn << "]"
             << std::endl;
   std::cout << "AA: "
             << "PPV=" << aa_summary.ppv_avg << "(" << aa_summary.ppv_sd << ") "
@@ -307,7 +330,7 @@ semisupervised_training(const VU& use_idx)
     float total_loss=0.0;
     std::random_shuffle(idx.begin(), idx.end());
     FOREACH (VU::const_iterator, it, idx) {
-      total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_matching_[*it], eta);
+      total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_int_[*it], eta);
     }
   }    
 }
@@ -318,160 +341,147 @@ unsupervised_training(const AA& aa, const RNA& rna,
                       std::vector<FC>& fc, VU& tc) const
 {
   VVU p;
-  float score = predict_matching(aa, rna, p);
+  float score = predict_interaction(aa, rna, p);
   count_feature(aa, rna, p, fc, tc);
   return score;
 }
 
 float
 PRactIP::
-predict_matching(const AA& aa, const RNA& rna, VVU& predicted_edges) const
+predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int) const
 {
-  VVF edge_weight;
-  calculate_edge_weight(aa, rna, edge_weight);
-  return predict_matching(edge_weight, predicted_edges);
+  VVF int_weight;
+  VF aa_weight, rna_weight;
+  calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
+  return predict_interaction(int_weight, aa_weight, rna_weight, predicted_int);
 }
 
 void
 PRactIP::
-read_correct_matching(const std::string& filename, VVU& correct_edges) const
+read_correct_interaction(const std::string& filename, VVU& correct_int) const
 {
   uint r, a;
   std::ifstream is(filename.c_str());
   while (is >> a >> r)
-    correct_edges[a].push_back(r);
+    correct_int[a].push_back(r);
+}
+
+inline
+static
+char*
+feature_string(const char* str, uint str_len, uint p, uint w, char* fname)
+{
+  char* f=fname;
+  for (uint i=w; i>=1; --i)
+    *f++ = p>=i ? str[p-i] : '-';
+  *f++ = str[p];
+  for (uint i=1; i<=w; ++i)
+    *f++ = p+i<str_len ? str[p+i] : '-';
+  *f++='\0';
+  return fname;
 }
 
 template < class Func >
 void
 PRactIP::
-extract_feature(const AA& aa, const RNA& rna, uint i, uint j, Func& func) const
+extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func& func) const
 {
+  struct {
+    uint id;
+    const char* aa_str;
+    uint aa_w;
+    const char* rna_str;
+    uint rna_w;
+  } features[] = {
+    { FG_P_3_R_3,      aa.seq.c_str(), 1, rna.seq.c_str(), 1 },
+    { FG_P_5_R_5,      aa.seq.c_str(), 2, rna.seq.c_str(), 2 },
+    { FG_Pss_3_Rss_3,  aa.ss.c_str(),  1, rna.ss.c_str(),  1 },
+    { FG_Pss_5_Rss_5,  aa.ss.c_str(),  2, rna.ss.c_str(),  2 },
+    { FG_Pg10_3_R_3,   aa.g10.c_str(), 1, rna.seq.c_str(), 1 },
+    { FG_Pg10_3_Rss_3, aa.g10.c_str(), 1, rna.ss.c_str(),  1 },
+    { FG_Pg10_5_R_5,   aa.g10.c_str(), 2, rna.seq.c_str(), 2 },
+    { FG_Pg10_5_Rss_5, aa.g10.c_str(), 2, rna.ss.c_str(),  2 },
+    { FG_Pg4_3_R_3,    aa.g4.c_str(),  1, rna.seq.c_str(), 1 },
+    { FG_Pg4_3_Rss_3,  aa.g4.c_str(),  1, rna.ss.c_str(),  1 },
+    { FG_Pg4_5_R_5,    aa.g4.c_str(),  2, rna.seq.c_str(), 2 },
+    { FG_Pg4_5_Rss_5,  aa.g4.c_str(),  2, rna.ss.c_str(),  2 },
+    { -1u, NULL, 0, NULL, 0 }
+  };
+  
   const uint rna_len=rna.seq.size();
   const uint aa_len=aa.seq.size();
   char buf[20];
-  if (use_feature_[FG_Rss5]) {
-    sprintf(buf, "%c%c%c%c%c",
-            j>=2 ? rna.ss[j-2] : '-',
-            j>=1 ? rna.ss[j-1] : '-',
-            rna.ss[j],
-            j+1<rna_len ? rna.ss[j+1] : '-',
-            j+2<rna_len ? rna.ss[j+2] : '-');
-    func(FG_Rss5, buf, i, j);
+  for (uint k=0; features[k].id!=-1u; ++k) {
+    if (use_feature_[features[k].id]) {
+      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf);
+      buf[features[k].aa_w*2+1]=',';
+      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf+features[k].aa_w*2+2);
+      func(features[k].id, buf, i, j);
+      //std::cout << features[k].id << " " << buf << std::endl;
+    }
   }
-  // Proteinss 
-  if (use_feature_[FG_Pss5]) {
-    sprintf(buf, "%c%c%c%c%c",
-            i>=2 ? aa.ss[i-2] : '-',
-            i>=1 ? aa.ss[i-1] : '-',
-            aa.ss[i],
-            i+1<aa_len ? aa.ss[i+1] : '-',
-            i+2<aa_len ? aa.ss[i+2] : '-');
-    func(FG_Pss5, buf, i, j);
+}
+
+template < class Func >
+void
+PRactIP::
+extract_aa_feature(const AA& aa, uint i, Func& func) const
+{
+  struct {
+    uint id;
+    const char* aa_str;
+    uint aa_w;
+  } features[] = {
+    { FG_P_3,    aa.seq.c_str(), 1 },
+    { FG_P_5,    aa.seq.c_str(), 2 },
+    { FG_Pss_3,  aa.ss.c_str(),  1 },
+    { FG_Pss_5,  aa.ss.c_str(),  2 },
+    { FG_Pg10_5, aa.g10.c_str(), 2 },
+    { FG_Pg10_7, aa.g10.c_str(), 3 },
+    { FG_Pg4_5,  aa.g4.c_str(),  2 },
+    { FG_Pg4_7,  aa.g4.c_str(),  3 },
+    { -1u, NULL, 0 }
+  };
+  
+  const uint aa_len=aa.seq.size();
+  char buf[20];
+
+  for (uint k=0; features[k].id!=-1u; ++k) {
+    if (use_feature_[features[k].id]) {
+      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf);
+      func(features[k].id, buf, i);
+      //std::cout << features[k].id << " " << buf << std::endl;
+    }
   }
-  // Pro-RNAss 
-  if (use_feature_[FG_PsRs]) {
-    sprintf(buf, "%c%c", aa.ss[i], rna.ss[j]);
-    func(FG_PsRs, buf, i, j);
+}
+
+template < class Func >
+void
+PRactIP::
+extract_rna_feature(const RNA& rna, uint j, Func& func) const
+{
+  struct {
+    uint id;
+    const char* rna_str;
+    uint rna_w;
+  } features[] = {
+    { FG_R_3,   rna.seq.c_str(), 1 },
+    { FG_R_5,   rna.seq.c_str(), 2 },
+    { FG_Rss_3, rna.ss.c_str(),  1 },
+    { FG_Rss_5, rna.ss.c_str(),  2 },
+    { -1u, NULL, 0 }
+  };
+  
+  const uint rna_len=rna.seq.size();
+  char buf[20];
+
+  for (uint k=0; features[k].id!=-1u; ++k) {
+    if (use_feature_[features[k].id]) {
+      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf);
+      func(features[k].id, buf, j);
+      //std::cout << features[k].id << " " << buf << std::endl;
+    }
   }
-  // Pro-RNA ss 3-3
-  if (use_feature_[FG_Ps3Rs3]) {
-    sprintf(buf, "%c%c%c%c%c%c",
-            i>=1 ? aa.ss[i-1] : '-',
-            aa.ss[i],
-            i+1<=aa_len ? aa.ss[i+1] :'-',
-            j>=1 ? rna.ss[j-1] : '-',
-            rna.ss[j],
-            j+1<=rna_len ? rna.ss[j+1] : '-');
-    func(FG_Ps3Rs3, buf, i, j);
-  }
-  // AAp
-  if (use_feature_[FG_AAp]) {
-    sprintf(buf, "%d", AA::group7(aa.seq[i]));
-    func(FG_AAp, buf, i, j);
-  }
-  // AAab
-  if (use_feature_[FG_AAab]) {
-    sprintf(buf, "%d", AA::ab3(aa.seq[i]));
-    func(FG_AAab, buf, i, j);
-  }
-  // AAh
-  if (use_feature_[FG_AAh]) {
-    sprintf(buf, "%d", AA::hydro3(aa.seq[i]));
-    func(FG_AAh, buf, i, j);
-  }
-  // Rpp
-  if (use_feature_[FG_Rpp]) {
-    sprintf(buf, "%d", RNA::pp2(rna.seq[j]));
-    func(FG_Rpp, buf, i, j);
-  }
-  // Protein 1 -
-  if (use_feature_[FG_P1]) {
-    sprintf(buf, "%c", aa.seq[i]);
-    func(FG_P1, buf, i, j);
-  }      
-  // Protein 1 - RNA 1
-  if (use_feature_[FG_P1R1]) {
-    sprintf(buf, "%c%c", aa.seq[i], rna.seq[j]);
-    func(FG_P1R1, buf, i, j);
-  }      
-  // Protein 3 - RNA 1
-  if (use_feature_[FG_P3R1]) {
-    sprintf(buf, "%c%c%c%c",
-            i>=1 ? aa.seq[i-1] : '-',
-            aa.seq[i],
-            i+1<aa_len ? aa.seq[i+1] : '-',
-            rna.seq[j]);
-    func(FG_P3R1, buf, i, j);
-  }      
-  // Protein 3 - RNA 3
-  if (use_feature_[FG_P3R3]) {
-    sprintf(buf, "%c%c%c%c%c%c",
-            i>=1 ? aa.seq[i-1] : '-',
-            aa.seq[i],
-            i+1<aa_len ? aa.seq[i+1] : '-',
-            j>=1 ? rna.seq[j-1] : '-',
-            rna.seq[j],
-            j+1<rna_len ? rna.seq[j+1] : '-');
-    func(FG_P3R3, buf, i, j);
-  }      
-  // Protein 5 - RNA 1
-  if (use_feature_[FG_P5R1]) {
-    sprintf(buf, "%c%c%c%c%c%c",
-            i>=2 ? aa.seq[i-2] : '-',
-            i>=1 ? aa.seq[i-1] : '-',
-            aa.seq[i],
-            i+1<aa_len ? aa.seq[i+1] : '-',
-            i+2<aa_len ? aa.seq[i+2] : '-',
-            rna.seq[j]);
-    func(FG_P5R1, buf, i, j);
-  }      
-  // Protein 1 - RNA 5
-  if (use_feature_[FG_P1R5]) {
-    sprintf(buf, "%c%c%c%c%c%c",
-            aa.seq[i],
-            j>=2 ? rna.seq[j-2] : '-',
-            j>=1 ? rna.seq[j-1] : '-',
-            rna.seq[j],
-            j+1<rna_len ? rna.seq[j+1] : '-',
-            j+2<rna_len ? rna.seq[j+2] : '-');
-    func(FG_P1R5, buf, i, j);
-  }      
-  // Protein 5 - RNA 5
-  if (use_feature_[FG_P5R5]) {
-    sprintf(buf, "%c%c%c%c%c%c%c%c%c%c",
-            i>=2 ? aa.seq[i-2] : '-',
-            i>=1 ? aa.seq[i-1] : '-',
-            aa.seq[i],
-            i+1<aa_len ? aa.seq[i+1] : '-',
-            i+2<aa_len ? aa.seq[i+2] : '-',
-            j>=2 ? rna.seq[j-2] : '-',
-            j>=1 ? rna.seq[j-1] : '-',
-            rna.seq[j],
-            j+1<rna_len ? rna.seq[j+1] : '-',
-            j+2<rna_len ? rna.seq[j+2] : '-');
-    func(FG_P5R5, buf, i, j);
-  }      
 }
 
 struct EdgeWeightCalculator
@@ -510,32 +520,103 @@ struct EdgeWeightCalculator
   VVF& edge_weight_;
 };
 
+struct NodeWeightCalculator
+{
+  NodeWeightCalculator(const std::vector<FM>& feature_weight,
+                       const std::vector<FC>& feature_count,
+                       const VF& feature_group_weight,
+                       const VU& feature_group_count,
+                       VF& node_weight)
+    : feature_weight_(feature_weight),
+      feature_count_(feature_count),
+      feature_group_weight_(feature_group_weight),
+      feature_group_count_(feature_group_count),
+      node_weight_(node_weight)
+  { }
+
+  inline void operator()(uint fgroup, const char* fname, uint i)
+  {
+    FM::const_iterator m;
+    m=feature_weight_[fgroup].find(fname);
+    if (m!=feature_weight_[fgroup].end())
+      node_weight_[i] += m->second;
+
+    if (feature_group_count_[fgroup]) {
+      FC::const_iterator m;
+      m=feature_count_[fgroup].find(fname);
+      if (m!=feature_count_[fgroup].end())
+        node_weight_[i] += feature_group_weight_[fgroup]*m->second/feature_group_count_[fgroup];
+    }
+  }
+
+  const std::vector<FM>& feature_weight_;
+  const std::vector<FC>& feature_count_;
+  const VF& feature_group_weight_;
+  const VU& feature_group_count_;
+  VF& node_weight_;
+};
+
 void
 PRactIP::
-calculate_edge_weight(const AA& aa, const RNA& rna, VVF& edge_weight) const
+calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight) const
 {
-  EdgeWeightCalculator e(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, edge_weight);
-  edge_weight.resize(aa.seq.size());
-  for (uint i=0; i!=edge_weight.size(); ++i) {
-    edge_weight[i].resize(rna.seq.size());
-    for (uint j=0; j!=edge_weight[i].size(); ++j) {
-      edge_weight[i][j] = 0.0;
-      extract_feature(aa, rna, i, j, e);
+  EdgeWeightCalculator int_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, int_weight);
+  int_weight.resize(aa.seq.size());
+  for (uint i=0; i!=int_weight.size(); ++i) {
+    int_weight[i].resize(rna.seq.size());
+    for (uint j=0; j!=int_weight[i].size(); ++j) {
+      int_weight[i][j] = 0.0;
+      extract_int_feature(aa, rna, i, j, int_weight_calculator);
     }
+  }
+
+  NodeWeightCalculator aa_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, aa_weight);
+  aa_weight.resize(aa.seq.size());
+  for (uint i=0; i!=aa_weight.size(); ++i) {
+    aa_weight[i] = 0.0;
+    extract_aa_feature(aa, i, aa_weight_calculator);
+  }
+
+  NodeWeightCalculator rna_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, rna_weight);
+  rna_weight.resize(rna.seq.size());
+  for (uint j=0; j!=rna_weight.size(); ++j) {
+    rna_weight[j] = 0.0;
+    extract_rna_feature(rna, j, rna_weight_calculator);
   }
 }
 
 void
 PRactIP::
-penalize_correct_matching(VVF& edge_weight, const VVU& correct_edges) const
+penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const
 {
-  for (uint i=0; i!=edge_weight.size(); ++i) 
-    for (uint j=0; j!=edge_weight[i].size(); ++j)
-      edge_weight[i][j] += neg_w_;
+  assert(int_weight.size()==correct_int.size());
+  assert(int_weight.size()==aa_weight.size());
 
-  for (uint i=0; i!=correct_edges.size(); ++i)
-    FOREACH (VU::const_iterator, j, correct_edges[i])
-      edge_weight[i][*j] -= pos_w_+neg_w_;
+  for (uint i=0; i!=int_weight.size(); ++i) 
+    for (uint j=0; j!=int_weight[i].size(); ++j)
+      int_weight[i][j] += neg_w_;
+
+  for (uint i=0; i!=correct_int.size(); ++i)
+    FOREACH (VU::const_iterator, j, correct_int[i])
+      int_weight[i][*j] -= pos_w_+neg_w_;
+
+  for (uint i=0; i!=aa_weight.size(); ++i) 
+    aa_weight[i] += neg_w_;
+
+  for (uint i=0; i!=correct_int.size(); ++i)
+    if (!correct_int[i].empty())
+      aa_weight[i] -= pos_w_+neg_w_;
+
+  for (uint j=0; j!=rna_weight.size(); ++j)
+    rna_weight[j] += neg_w_;
+
+  std::vector<bool> rna_has_int(rna_weight.size(), false);
+  for (uint i=0; i!=correct_int.size(); ++i)
+    FOREACH (VU::const_iterator, j, correct_int[i])
+      rna_has_int[*j] = true;
+  for (uint j=0; j!=rna_has_int.size(); ++j)
+    if (rna_has_int[j])
+      rna_weight[j] -= pos_w_+neg_w_;
 }
 
 struct FeatureWeightUpdater
@@ -552,9 +633,11 @@ struct FeatureWeightUpdater
       eta_(eta)
   { }
 
-  inline void operator()(uint fgroup, const char* fname, uint i, uint j)
+  inline void operator()(uint fgroup, const char* fname, uint i=-1u, uint j=-1u)
   {
+    //std::cout << fgroup << ":" << fname << "=" << feature_weight_[fgroup][fname]; 
     feature_weight_[fgroup].insert(std::make_pair(std::string(fname),0.0f)).first->second += eta_;
+    //std::cout << " -> " << feature_weight_[fgroup][fname] << std::endl;
     if (feature_group_count_[fgroup]) {
       FC::const_iterator m;
       m=feature_count_[fgroup].find(fname);
@@ -572,21 +655,47 @@ struct FeatureWeightUpdater
 
 void
 PRactIP::
-update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_edges, const VVU& correct_edges, float eta)
+update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int, float eta)
 {
-  FeatureWeightUpdater f(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, eta);
-  for (uint i=0; i!=correct_edges.size(); ++i) {
-    FOREACH (VU::const_iterator, j, correct_edges[i]) {
-      extract_feature(aa, rna, i, *j, f);
-    }
-  }
+  assert(predicted_int.size()==correct_int.size());
 
+  // update feature weights in correct interactions, i.e., add eta
+  //   interactions
+  FeatureWeightUpdater f(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, eta);
+  for (uint i=0; i!=correct_int.size(); ++i)
+    FOREACH (VU::const_iterator, j, correct_int[i])
+      extract_int_feature(aa, rna, i, *j, f);
+  //   amino acids
+  for (uint i=0; i!=correct_int.size(); ++i)
+    if (!correct_int[i].empty())
+      extract_aa_feature(aa, i, f);
+  //   RNAs
+  std::vector<bool> rna_has_int(correct_int.size(), false);
+  for (uint i=0; i!=correct_int.size(); ++i)
+    FOREACH (VU::const_iterator, j, correct_int[i])
+      rna_has_int[*j] = true;
+  for (uint j=0; j!=rna_has_int.size(); ++j)
+    if (rna_has_int[j])
+      extract_rna_feature(rna, j, f);
+
+  // update feature weights in predicted interactions, i.e., add -eta
+  //   interactions
   FeatureWeightUpdater g(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, -eta);
-  for (uint i=0; i!=predicted_edges.size(); ++i) {
-    FOREACH (VU::const_iterator, j, predicted_edges[i]) {
-      extract_feature(aa, rna, i, *j, g);
-    }
-  }
+  for (uint i=0; i!=predicted_int.size(); ++i) 
+    FOREACH (VU::const_iterator, j, predicted_int[i]) 
+      extract_int_feature(aa, rna, i, *j, g);
+  //   amino acids
+  for (uint i=0; i!=predicted_int.size(); ++i)
+    if (!predicted_int[i].empty())
+      extract_aa_feature(aa, i, g);
+  //   RNAs
+  std::fill(rna_has_int.begin(), rna_has_int.end(), false);
+  for (uint i=0; i!=predicted_int.size(); ++i)
+    FOREACH (VU::const_iterator, j, predicted_int[i])
+      rna_has_int[*j] = true;
+  for (uint j=0; j!=rna_has_int.size(); ++j)
+    if (rna_has_int[j])
+      extract_rna_feature(rna, j, g);
 }
 
 struct FeatureCounter
@@ -595,7 +704,7 @@ struct FeatureCounter
     : fc_(fc), tc_(tc)
   { }
 
-  inline void operator()(uint fgroup, const char* fname, uint i, uint j)
+  inline void operator()(uint fgroup, const char* fname, uint i=-1u, uint j=-1u)
   {
     fc_[fgroup].insert(std::make_pair(std::string(fname),0u)).first->second++;
     tc_[fgroup]++;
@@ -607,12 +716,22 @@ struct FeatureCounter
 
 void
 PRactIP::
-count_feature(const AA& aa, const RNA& rna, const VVU& edge, std::vector<FC>& fc, VU& tc) const
+count_feature(const AA& aa, const RNA& rna, const VVU& predicted_int, std::vector<FC>& fc, VU& tc) const
 {
   FeatureCounter c(fc, tc);
-  for (uint i=0; i!=edge.size(); ++i)
-    FOREACH (VU::const_iterator, j, edge[i])
-      extract_feature(aa, rna, i, *j, c);
+  for (uint i=0; i!=predicted_int.size(); ++i)
+    FOREACH (VU::const_iterator, j, predicted_int[i])
+      extract_int_feature(aa, rna, i, *j, c);
+  for (uint i=0; i!=predicted_int.size(); ++i)
+    if (!predicted_int[i].empty())
+      extract_aa_feature(aa, i, c);
+  std::vector<bool> rna_has_int(predicted_int.size(), false);
+  for (uint i=0; i!=predicted_int.size(); ++i)
+    FOREACH (VU::const_iterator, j, predicted_int[i])
+      rna_has_int[*j] = true;
+  for (uint j=0; j!=rna_has_int.size(); ++j)
+    if (rna_has_int[j])
+      extract_rna_feature(rna, j, c);
 }
 
 static inline
@@ -630,16 +749,17 @@ PRactIP::
 regularization_fobos(float eta)
 {
   float sum1=0.0;
-  std::vector<FM >::iterator i;
-  for (i=feature_weight_.begin(); i!=feature_weight_.end(); ++i)
+  for (uint i=0; i!=feature_weight_.size(); ++i)
   {
-    FM::iterator j=i->begin();
-    while (j!=i->end()) {
+    FM::iterator j=feature_weight_[i].begin();
+    while (j!=feature_weight_[i].end()) {
+      //std::cout << i << ":" << j->first << "=" << j->second;
       j->second = clip(j->second, eta*lambda_);
+      //std::cout << " => " << j->second << std::endl;
       sum1 += std::abs(j->second);
-      if (j->second==0.0)
-        i->erase(j++);
-      else
+      if (j->second==0.0) {
+        feature_weight_[i].erase(j++);
+      } else
         ++j;
     }
   }
@@ -655,33 +775,83 @@ regularization_fobos(float eta)
 
 float
 PRactIP::
-predict_matching(const VVF& edge_weight, VVU& p) const
+predict_interaction(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const
 {
-  const uint aa_len = edge_weight.size();
-  const uint rna_len = edge_weight[0].size();
+  const uint aa_len = int_weight.size();
+  const uint rna_len = int_weight[0].size();
   
   IP ip(IP::MAX, n_th_);
 
-  VVI x(aa_len, VI(rna_len, -1));
+  VI x(aa_len, -1);             // binding site in AA
+  VI y(rna_len, -1);            // binding site in RNA
+  VVI z(aa_len, VI(rna_len, -1)); // interactions
+  for (uint i=0; i!=aa_len; ++i)
+    if (aa_weight[i]>0.0)
+      x[i] = ip.make_variable(aa_weight[i]);
+  for (uint j=0; j!=rna_len; ++j)
+    if (rna_weight[j]>0.0)
+      y[j] = ip.make_variable(rna_weight[j]);
   for (uint i=0; i!=aa_len; ++i)
     for (uint j=0; j!=rna_len; ++j)
-      if (edge_weight[i][j]>0.0)
-        x[i][j] = ip.make_variable(edge_weight[i][j]);
+      if (int_weight[i][j]>0.0)
+        z[i][j] = ip.make_variable(int_weight[i][j]);
   
   ip.update();
 
   for (uint i=0; i!=aa_len; ++i) {
-    int row = ip.make_constraint(IP::UP, 0, 1);
-    for (uint j=0; j!=rna_len; ++j) 
-      if (x[i][j]>=0)
-        ip.add_constraint(row, x[i][j], 1);
+    if (x[i]>=0) {
+      //x[i] >= z[i][j]
+      for (uint j=0; j!=rna_len; ++j) {
+        if (z[i][j]>=0) {
+          int row = ip.make_constraint(IP::LO, 0, 0);
+          ip.add_constraint(row, x[i], 1);
+          ip.add_constraint(row, z[i][j], -1);
+        }
+      }
+
+      //sum_j z[i][j] >= x[i]
+      int row = ip.make_constraint(IP::LO, 0, 0);
+      ip.add_constraint(row, x[i], -1);
+      for (uint j=0; j!=rna_len; ++j)
+        if (z[i][j]>=0)
+          ip.add_constraint(row, z[i][j], 1);
+    }
   }
 
   for (uint j=0; j!=rna_len; ++j) {
+    if (y[j]>=0) {
+      //y[j] >= z[i][j]
+      for (uint i=0; i!=aa_len; ++i) {
+        if (z[i][j]>=0) {
+          int row = ip.make_constraint(IP::LO, 0, 0);
+          ip.add_constraint(row, y[j], 1);
+          ip.add_constraint(row, z[i][j], -1);
+        }
+      }
+
+      //sum_i z[i][j] >= y[j]
+      int row = ip.make_constraint(IP::LO, 0, 0);
+      ip.add_constraint(row, y[j], -1);
+      for (uint i=0; i!=aa_len; ++i)
+        if (z[i][j]>=0)
+          ip.add_constraint(row, z[i][j], 1);
+    }
+  }
+
+  for (uint i=0; i!=aa_len; ++i) {
+    //sum_j z[i][j] <= 1
+    int row = ip.make_constraint(IP::UP, 0, 1);
+    for (uint j=0; j!=rna_len; ++j) 
+      if (z[i][j]>=0)
+        ip.add_constraint(row, z[i][j], 1);
+  }
+
+  for (uint j=0; j!=rna_len; ++j) {
+    //sum_i z[i][j] <= 1
     int row = ip.make_constraint(IP::UP, 0, 1);
     for (uint i=0; i!=aa_len; ++i)
-      if (x[i][j]>=0)
-        ip.add_constraint(row, x[i][j], 1);
+      if (z[i][j]>=0)
+        ip.add_constraint(row, z[i][j], 1);
   }
 
   float s = ip.solve();
@@ -689,7 +859,7 @@ predict_matching(const VVF& edge_weight, VVU& p) const
   p.resize(aa_len);
   for (uint i=0; i!=aa_len; ++i)
     for (uint j=0; j!=rna_len; ++j)
-      if (x[i][j]>=0 && ip.get_value(x[i][j])>0.5)
+      if (z[i][j]>=0 && ip.get_value(z[i][j])>0.5)
         p[i].push_back(j);
 
   return s;
@@ -728,14 +898,23 @@ read(const std::string& filename)
   while (fgets(line, sizeof(line), fp)) {
     if (line[0]=='\n' || line[0]=='#') continue;
     switch (line[7]) {
-      case 'C': ss.push_back('.'); break;
-      case 'E': ss.push_back('>'); break;
-      case 'H': ss.push_back('='); break;
+      case 'C': case 'E': case 'H':
+        ss.push_back(line[7]);
+        break;
       default: assert(!"unreachable"); break;
     }
   }
 #endif
   fclose(fp);
+
+  g10.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g10.begin(), group10);
+  g8.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g8.begin(), group8);
+  g4.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g4.begin(), group4);
+  g2.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g2.begin(), group2);
 
   assert(this->seq.size()==this->ss.size());
   return this->seq.size();
@@ -763,11 +942,27 @@ read(const std::string& filename)
   fp = popen(cmd, "r");
   while (fgets(line, sizeof(line), fp)) {
     if (line[0]=='>') continue;
-    if (strchr(".()[]{}<>", line[0])) {
+#if 1
+    if (strchr(".()", line[0])) {
       for (uint i=0; line[i]!='\0'; ++i) {
         switch (line[i]) {
           case '.':
-            line[i]='.'; break;
+          case '(':
+          case ')':
+            break;
+          case '\n':
+          case ' ':
+            line[i]='\0';
+            break;
+        }
+      }
+      this->ss+=line;
+    }
+#else
+    if (strchr(".()[]{}<>", line[0])) {
+      for (uint i=0; line[i]!='\0'; ++i) {
+        switch (line[i]) {
+          case '.': break;
           case '(': case ')':
           case '[': case ']':
           case '{': case '}':
@@ -780,54 +975,187 @@ read(const std::string& filename)
       }
       this->ss+=line;
     }
+#endif
   }
+
+  structural_profile(ss, ss);
+
+  g2.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g2.begin(), group2);
 
   assert(this->seq.size()==this->ss.size());
   return this->seq.size();
 }
 
+// groups defined by Murphy et al., Protein Eng., 2000, 13(3), pp.149-152
 // static
-int
+char
 PRactIP::AA::
-group7(char a)
+group10(char a)
 {
-  if(a == 'A' || a == 'G' || a == 'V') {return 0;}
-  if(a == 'I' || a == 'L' || a == 'F' || a == 'P') {return 1;}
-  if(a == 'Y' || a == 'M' || a == 'T' || a == 'S') {return 2;}
-  if(a == 'H' || a == 'N' || a == 'Q' || a == 'W') {return 3;}
-  if(a == 'R' || a == 'K') {return 4;}
-  if(a == 'D' || a == 'E') {return 5;}
-  if(a == 'C') {return 6;}
-  return -1;
+  switch (a) {
+    case 'L': case 'V': case 'I': case 'M':
+      return 'I'; break; // the smallest alphabet is used as the representative
+    case 'C':
+      return 'C'; break;
+    case 'A':
+      return 'A'; break;
+    case 'G':
+      return 'G'; break;
+    case 'S': case 'T':
+      return 'S'; break;    
+    case 'P':
+      return 'P'; break;
+    case 'F': case 'Y': case 'W':
+      return 'F'; break;
+    case 'E': case 'D': case 'N': case 'Q':
+      return 'D'; break;
+    case 'K': case 'R':
+      return 'K'; break;
+    case 'H':
+      return 'H'; break;
+  }
+  return a;
 }
 
 // static
-int
+char
 PRactIP::AA::
-ab3(char a)
+group8(char a)
 {
-  if(a == 'D' || a == 'E') {return 0;}
-  if(a == 'R' || a == 'H' || a == 'K') {return 1;}
-  else{return 2;}
+  switch (a) {
+    case 'L': case 'V': case 'I': case 'M': case 'C':
+      return 'C'; break;
+    case 'A': case 'G':
+      return 'A'; break;
+    case 'S': case 'T':
+      return 'S'; break;    
+    case 'P':
+      return 'P'; break;
+    case 'F': case 'Y': case 'W':
+      return 'F'; break;
+    case 'E': case 'D': case 'N': case 'Q':
+      return 'D'; break;
+    case 'K': case 'R':
+      return 'K'; break;
+    case 'H':
+      return 'H'; break;
+  }
+  return a;
 }
 
 // static
-int
+char
 PRactIP::AA::
-hydro3(char a)
+group4(char a)
 {
-  if(a == 'A' || a == 'M' || a == 'C' || a == 'F' || a == 'L' || a == 'V' || a == 'I'){return 0;}
-  if(a == 'R' || a == 'K' || a == 'Q' || a == 'N' || a == 'E' || a == 'D' || a == 'H'){return 1;}
-  else{return 2;}
+  switch (a) {
+    case 'L': case 'V': case 'I': case 'M': case 'C':
+      return 'C'; break;
+    case 'A': case 'G': case 'S': case 'T': case 'P':
+      return 'A'; break;
+    case 'F': case 'Y': case 'W':
+      return 'F'; break;
+    case 'E': case 'D': case 'N': case 'Q': case 'K': case 'R': case 'H':
+      return 'E'; break;
+  }
+  return a;
+}
+
+// static
+char
+PRactIP::AA::
+group2(char a)
+{
+  switch (a) {
+    case 'L': case 'V': case 'I': case 'M': case 'C':
+    case 'A': case 'G': case 'S': case 'T': case 'P':
+    case 'F': case 'Y': case 'W':
+      return 'A'; break;
+    case 'E': case 'D': case 'N': case 'Q': case 'K': case 'R': case 'H':
+      return 'D'; break;
+  }
+  return a;
 }
 
 //static
-int
+char
 PRactIP::RNA::
-pp2(char b)
+group2(char b)
 {
-  if(b == 'A' || b == 'G'){return 0;}
-  else{return 1;}
+  switch (b) {
+    case 'A': case 'G':
+      return 'R'; break;
+    case 'C': case 'T': case 'U':
+      return 'Y'; break;
+  }
+  return b;
+}
+
+// static
+void
+PRactIP::RNA::
+structural_profile(const std::string& ss, std::string& profile)
+{
+  VU p(ss.size(), -1u);
+  std::string ss2(ss);
+  std::stack<int> st;
+  for (uint i=0; i!=ss2.size(); ++i) {
+    switch (ss2[i]) {
+      case '(':
+        st.push(i);
+        break;
+      case ')':
+        p[st.top()]=i;
+        p[i]=st.top();
+        st.pop();
+        if (ss2[i+1]!=')' || st.top()+1!=p[i]) {
+          ss2[p[i]]='[';
+          ss2[i]=']';
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  profile.resize(ss.size());
+  std::fill(profile.begin(), profile.end(), 'E');
+  std::stack<uint> loop_degree;
+  std::stack<bool> bulge;
+  for (uint i=0; i!=ss2.size(); ++i) {
+    switch (ss2[i]) {
+      case '(':
+        profile[i]='S';
+        break;
+      case ')':
+        profile[i]='S';
+        if (ss2[i-1]==']') bulge.top()=true;
+        break;
+      case '[':
+        profile[i]='S';
+        if (i>0 && (ss2[i-1]=='(' || ss2[i-1]=='[')) bulge.top()=true;
+        loop_degree.push(1);
+        bulge.push(false);
+        break;
+      case ']':
+        char ps;
+        profile[i]='S';
+        if (ss2[i-1]==']') bulge.top()=true;
+        switch (loop_degree.top()) {
+          case 1: ps='H'; break;
+          case 2: ps=bulge.top() ? 'B' : 'I'; break;
+          default: ps='M'; break;
+        }
+        loop_degree.pop();
+        loop_degree.top();
+        if (!loop_degree.empty()) loop_degree.top()++;
+        bulge.pop();
+        for (uint j=p[i]+1; j!=i; ++j)
+          if (profile[j]=='E') profile[j]=ps;
+        break;
+    }
+  }
 }
 
 PRactIP&
