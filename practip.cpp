@@ -1086,7 +1086,7 @@ structural_profile(const std::string& ss, std::string& profile)
 {
   VU p(ss.size(), -1u);
   std::string ss2(ss);
-  std::stack<int> st;
+  std::stack<uint> st;
   for (uint i=0; i!=ss2.size(); ++i) {
     switch (ss2[i]) {
       case '(':
