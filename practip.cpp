@@ -946,8 +946,7 @@ read(const std::string& filename)
   }
   
   while (fgets(line, sizeof(line), fp)) {
-    if (line[0]=='>') continue;
-#if 1
+    if (line[0]=='>' || line[0]=='f') continue;
     if (strchr(".()", line[0])) {
       for (uint i=0; line[i]!='\0'; ++i) {
         switch (line[i]) {
@@ -963,25 +962,8 @@ read(const std::string& filename)
       }
       this->ss+=line;
     }
-#else
-    if (strchr(".()[]{}<>", line[0])) {
-      for (uint i=0; line[i]!='\0'; ++i) {
-        switch (line[i]) {
-          case '.': break;
-          case '(': case ')':
-          case '[': case ']':
-          case '{': case '}':
-          case '<': case '>':
-            line[i]='|'; break;
-          case '\n':
-          case ' ':
-            line[i]='\0'; break;
-        }
-      }
-      this->ss+=line;
-    }
-#endif
   }
+  fclose(fp);
 
   structural_profile(ss, ss);
 
