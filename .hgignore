@@ -1,5 +1,6 @@
 syntax: glob
 .hgignore*
+*~
 *.o
 GPATH
 GRTAGS

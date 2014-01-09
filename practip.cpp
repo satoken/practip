@@ -935,11 +935,16 @@ read(const std::string& filename)
   }
   fclose(fp);
 
-  const char* prog=getenv("CENTROID_FOLD");
-  if (!prog) prog="centroid_fold";
-  char cmd[1000];
-  sprintf(cmd, "%s %s", prog, filename.c_str());
-  fp = popen(cmd, "r");
+  std::string ss_file = filename.substr(0, filename.find_last_of('.'))+".ss";
+  fp = fopen(ss_file.c_str(), "r");
+  if (fp==NULL) {
+    const char* prog=getenv("CENTROID_FOLD");
+    if (!prog) prog="centroid_fold";
+    char cmd[1000];
+    sprintf(cmd, "%s %s", prog, filename.c_str());
+    fp = popen(cmd, "r");
+  }
+  
   while (fgets(line, sizeof(line), fp)) {
     if (line[0]=='>') continue;
 #if 1
