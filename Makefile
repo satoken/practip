@@ -1,7 +1,18 @@
 CXX=g++
 CC=gcc
-#CXXFLAGS=-g -Wall -DWITH_GLPK -D_GLIBCXX_DEBUG
-CXXFLAGS=-O2 -Wall -DWITH_GLPK -DNDEBUG
+
+# for GLPK
+#CXXFLAGS_IP=-DWITH_GLPK
+#LDFLAGS_IP=-lglpk
+
+#for CPLEX
+CPLEX_BASE=/opt/ibm/ILOG/CPLEX_Studio126
+CXXFLAGS_IP=-DWITH_CPLEX -DIL_STD -I$(CPLEX_BASE)/concert/include -I$(CPLEX_BASE)/cplex/include 
+LDFLAGS_IP=-L$(CPLEX_BASE)/concert/lib/x86-64_linux/static_pic -L$(CPLEX_BASE)/cplex/lib/x86-64_linux/static_pic -lconcert -lilocplex -lcplex -lpthread
+
+#CXXFLAGS=-g -Wall -D_GLIBCXX_DEBUG $(CXXFLAGS_IP)
+CXXFLAGS=-O2 -std=c++11 -Wall -DNDEBUG $(CXXFLAGS_IP)
+LDFLAGS=$(LDFLAGS_IP)
 
 all: practip
 
@@ -9,7 +20,7 @@ clean:
 	rm -f practip.o ip.o cmdline.o
 
 practip: practip.o ip.o cmdline.o
-	$(CXX) -g -o practip practip.o ip.o cmdline.o -lglpk
+	$(CXX) -g -o practip practip.o ip.o cmdline.o $(LDFLAGS)
 
 practip.o: practip.cpp ip.h cmdline.h
 ip.o: ip.cpp
