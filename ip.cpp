@@ -63,6 +63,15 @@ public:
     return col;
   }
 
+  int make_variable(double coef, int lo, int hi)
+  {
+    int col = glp_add_cols(ip_, 1);
+    glp_set_col_bnds(ip_, col, GLP_DB, lo, hi);
+    glp_set_col_kind(ip_, col, GLP_IV);
+    glp_set_obj_coef(ip_, col, coef);
+    return col;
+  }
+
   int make_constraint(IP::BoundType bnd, double l, double u)
   {
     int row = glp_add_rows(ip_, 1);
@@ -221,6 +230,15 @@ public:
     return col;
   }
 
+  int make_variable(double coef, int lo, int hi)
+  {
+    int col = vars_.getSize();
+    vars_.add(IloIntVar(env_, lo, hi));
+    obj_ += coef * vars_[col];
+    return col;
+  }
+ 
+
   int make_constraint(IP::BoundType bnd, double l, double u)
   {
     bnd_.push_back(bnd);
@@ -315,6 +333,13 @@ IP::
 make_variable(double coef)
 {
   return impl_->make_variable(coef);
+}
+
+int
+IP::
+make_variable(double coef, int lo, int hi)
+{
+  return impl_->make_variable(coef, lo, hi);
 }
 
 int

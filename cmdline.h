@@ -63,6 +63,9 @@ struct gengetopt_args_info
   int g_max_arg;	/**< @brief The maximim number of iterations of the semi-supervised learning (default='500').  */
   char * g_max_orig;	/**< @brief The maximim number of iterations of the semi-supervised learning original value given at command line.  */
   const char *g_max_help; /**< @brief The maximim number of iterations of the semi-supervised learning help description.  */
+  float exceeding_penalty_arg;	/**< @brief The penalty for exceeding the limit of the number of interactions for each residue/base (default='0.5').  */
+  char * exceeding_penalty_orig;	/**< @brief The penalty for exceeding the limit of the number of interactions for each residue/base original value given at command line.  */
+  const char *exceeding_penalty_help; /**< @brief The penalty for exceeding the limit of the number of interactions for each residue/base help description.  */
   
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
@@ -74,6 +77,7 @@ struct gengetopt_args_info
   unsigned int generative_given ;	/**< @brief Whether generative was given.  */
   unsigned int d_max_given ;	/**< @brief Whether d-max was given.  */
   unsigned int g_max_given ;	/**< @brief Whether g-max was given.  */
+  unsigned int exceeding_penalty_given ;	/**< @brief Whether exceeding-penalty was given.  */
 
   char **inputs ; /**< @brief unamed options (options without names) */
   unsigned inputs_num ; /**< @brief unamed options number */

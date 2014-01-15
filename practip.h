@@ -27,6 +27,8 @@ public:
     int read(const std::string& filename);
     static char group2(char);
     static void structural_profile(const std::string& ss, std::string& profile);
+
+    static uint max_intraction(char x);
   };
 
   struct AA {
@@ -43,6 +45,8 @@ public:
     static char group8(char a);
     static char group4(char a);
     static char group2(char a);
+
+    static uint max_intraction(char x);
   };
 
   // Feature Groups
@@ -111,7 +115,7 @@ private:
   void update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int, float eta);
   void count_feature(const AA& aa, const RNA& rna, const VVU& predicted_int, std::vector<FC>& fc, VU& tc) const;
   float regularization_fobos(float eta);
-  float predict_interaction(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const;
+  float predict_interaction(const AA& aa, const RNA& rna, const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const;
   float calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, const VVU& interactions) const;
 
 private:
@@ -132,6 +136,7 @@ private:
   float lambda_;
   float mu_;
   float eta0_;
+  float exceed_penalty_;
   uint n_th_;
   uint d_max_;
   uint g_max_;

@@ -207,7 +207,7 @@ supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, float 
   loss -= calculate_score(int_weight, aa_weight, rna_weight, correct_int);
   penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
   VVU predicted_int;
-  predict_interaction(int_weight, aa_weight, rna_weight, predicted_int);
+  predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
   loss += calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
 #if 0
   for (uint i=0; i!=correct_int.size(); ++i) {
@@ -353,7 +353,7 @@ predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int) const
   VVF int_weight;
   VF aa_weight, rna_weight;
   calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
-  return predict_interaction(int_weight, aa_weight, rna_weight, predicted_int);
+  return predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
 }
 
 void
@@ -775,22 +775,30 @@ regularization_fobos(float eta)
 
 float
 PRactIP::
-predict_interaction(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const
+predict_interaction(const AA& aa, const RNA& rna,
+                    const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const
 {
   const uint aa_len = int_weight.size();
   const uint rna_len = int_weight[0].size();
+  const int MAX_INTERACTION = 20;
   
   IP ip(IP::MAX, n_th_);
 
   VI x(aa_len, -1);             // binding site in AA
   VI y(rna_len, -1);            // binding site in RNA
   VVI z(aa_len, VI(rna_len, -1)); // interactions
+  VI sl_x(aa_len, -1);            // slack variables for AA to relax some constraints
+  VI sl_y(rna_len, -1);           // slack variables for RNA to relax some constraints
   for (uint i=0; i!=aa_len; ++i)
-    if (aa_weight[i]>0.0)
+    if (aa_weight[i]>0.0) {
       x[i] = ip.make_variable(aa_weight[i]);
+      sl_x[i] = ip.make_variable(-exceed_penalty_, 0, MAX_INTERACTION);
+    }
   for (uint j=0; j!=rna_len; ++j)
-    if (rna_weight[j]>0.0)
+    if (rna_weight[j]>0.0) {
       y[j] = ip.make_variable(rna_weight[j]);
+      sl_y[j] = ip.make_variable(-exceed_penalty_, 0, MAX_INTERACTION);
+    }
   for (uint i=0; i!=aa_len; ++i)
     for (uint j=0; j!=rna_len; ++j)
       if (int_weight[i][j]>0.0)
@@ -800,7 +808,7 @@ predict_interaction(const VVF& int_weight, const VF& aa_weight, const VF& rna_we
 
   for (uint i=0; i!=aa_len; ++i) {
     if (x[i]>=0) {
-      //x[i] >= z[i][j]
+      //x_i >= z_ij
       for (uint j=0; j!=rna_len; ++j) {
         if (z[i][j]>=0) {
           int row = ip.make_constraint(IP::LO, 0, 0);
@@ -809,7 +817,7 @@ predict_interaction(const VVF& int_weight, const VF& aa_weight, const VF& rna_we
         }
       }
 
-      //sum_j z[i][j] >= x[i]
+      //sum_j z_ij >= x_i
       int row = ip.make_constraint(IP::LO, 0, 0);
       ip.add_constraint(row, x[i], -1);
       for (uint j=0; j!=rna_len; ++j)
@@ -820,7 +828,7 @@ predict_interaction(const VVF& int_weight, const VF& aa_weight, const VF& rna_we
 
   for (uint j=0; j!=rna_len; ++j) {
     if (y[j]>=0) {
-      //y[j] >= z[i][j]
+      //y_j >= z_ij
       for (uint i=0; i!=aa_len; ++i) {
         if (z[i][j]>=0) {
           int row = ip.make_constraint(IP::LO, 0, 0);
@@ -829,7 +837,7 @@ predict_interaction(const VVF& int_weight, const VF& aa_weight, const VF& rna_we
         }
       }
 
-      //sum_i z[i][j] >= y[j]
+      //sum_i z_ij >= y_j
       int row = ip.make_constraint(IP::LO, 0, 0);
       ip.add_constraint(row, y[j], -1);
       for (uint i=0; i!=aa_len; ++i)
@@ -839,19 +847,31 @@ predict_interaction(const VVF& int_weight, const VF& aa_weight, const VF& rna_we
   }
 
   for (uint i=0; i!=aa_len; ++i) {
-    //sum_j z[i][j] <= 1
-    int row = ip.make_constraint(IP::UP, 0, 1);
+    //sum_j z_ij <= max_int(ss_i)
+    int row = ip.make_constraint(IP::UP, 0, AA::max_intraction(aa.ss[i]));
+    if (sl_x[i]>=0) ip.add_constraint(row, sl_x[i], -1);
     for (uint j=0; j!=rna_len; ++j) 
       if (z[i][j]>=0)
         ip.add_constraint(row, z[i][j], 1);
   }
 
   for (uint j=0; j!=rna_len; ++j) {
-    //sum_i z[i][j] <= 1
-    int row = ip.make_constraint(IP::UP, 0, 1);
+    //sum_i z_ij <= max_int(ss_j)
+    int row = ip.make_constraint(IP::UP, 0, RNA::max_intraction(rna.ss[j]));
+    if (sl_y[j]>=0) ip.add_constraint(row, sl_y[j], -1);
     for (uint i=0; i!=aa_len; ++i)
       if (z[i][j]>=0)
         ip.add_constraint(row, z[i][j], 1);
+  }
+
+  for (uint j=0; j!=rna_len; ++j) {
+    if (y[j]>=0) {
+      // y_{j-1}+(1-y_j)+y_{j+1}>=1
+      int row = ip.make_constraint(IP::LO, 0, 0);
+      if (j>=1 && y[j-1]>=0) ip.add_constraint(row, y[j-1], 1);
+      ip.add_constraint(row, y[j], -1);
+      if (j+1<rna_len && y[j+1]>=0) ip.add_constraint(row, y[j+1], 1);
+    }
   }
 
   float s = ip.solve();
@@ -918,6 +938,29 @@ read(const std::string& filename)
 
   assert(this->seq.size()==this->ss.size());
   return this->seq.size();
+}
+
+// static
+inline
+uint
+PRactIP::AA::
+max_intraction(char x)
+{
+  return 3;
+}
+
+// static
+inline
+uint
+PRactIP::RNA::
+max_intraction(char x)
+{
+  switch (x)
+  {
+    case 'E': return 7; break;
+    case 'H': return 5; break;
+  }
+  return 4;
 }
 
 int
@@ -1160,6 +1203,7 @@ parse_options(int& argc, char**& argv)
   d_max_ = args_info.d_max_arg;
   g_max_ = args_info.g_max_arg;
   cv_fold_ = args_info.cross_validation_arg;
+  exceed_penalty_ = args_info.exceeding_penalty_arg;
   
   if (args_info.inputs_num==0)
   {

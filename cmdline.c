@@ -32,16 +32,17 @@ const char *gengetopt_args_info_usage = "Usage: practip [OPTIONS] labeled-data [
 const char *gengetopt_args_info_description = "";
 
 const char *gengetopt_args_info_help[] = {
-  "  -h, --help                  Print help and exit",
-  "  -V, --version               Print version and exit",
-  "      --cross-validation=INT  Perform the n-fold cross validation  \n                                (default=`0')",
-  "  -e, --eta=FLOAT             Initial step width for the subgradient \n                                optimization  (default=`0.5')",
-  "      --pos-w=FLOAT           The weight for positive interactions  \n                                (default=`4')",
-  "      --neg-w=FLOAT           The weight for negative interactions  \n                                (default=`1')",
-  "  -D, --discriminative=FLOAT  The weight for the regularization term of the \n                                discriminative model  (default=`1.0')",
-  "  -G, --generative=FLOAT      The weight for the regularization term of the \n                                generative models  (default=`1.0')",
-  "  -d, --d-max=INT             The maximim number of iterations of the \n                                supervised learning  (default=`500')",
-  "  -g, --g-max=INT             The maximim number of iterations of the \n                                semi-supervised learning  (default=`500')",
+  "  -h, --help                    Print help and exit",
+  "  -V, --version                 Print version and exit",
+  "      --cross-validation=INT    Perform the n-fold cross validation  \n                                  (default=`0')",
+  "  -e, --eta=FLOAT               Initial step width for the subgradient \n                                  optimization  (default=`0.5')",
+  "      --pos-w=FLOAT             The weight for positive interactions  \n                                  (default=`4')",
+  "      --neg-w=FLOAT             The weight for negative interactions  \n                                  (default=`1')",
+  "  -D, --discriminative=FLOAT    The weight for the regularization term of the \n                                  discriminative model  (default=`1.0')",
+  "  -G, --generative=FLOAT        The weight for the regularization term of the \n                                  generative models  (default=`1.0')",
+  "  -d, --d-max=INT               The maximim number of iterations of the \n                                  supervised learning  (default=`500')",
+  "  -g, --g-max=INT               The maximim number of iterations of the \n                                  semi-supervised learning  (default=`500')",
+  "      --exceeding-penalty=FLOAT The penalty for exceeding the limit of the \n                                  number of interactions for each residue/base  \n                                  (default=`0.5')",
     0
 };
 
@@ -76,6 +77,7 @@ void clear_given (struct gengetopt_args_info *args_info)
   args_info->generative_given = 0 ;
   args_info->d_max_given = 0 ;
   args_info->g_max_given = 0 ;
+  args_info->exceeding_penalty_given = 0 ;
 }
 
 static
@@ -98,6 +100,8 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->d_max_orig = NULL;
   args_info->g_max_arg = 500;
   args_info->g_max_orig = NULL;
+  args_info->exceeding_penalty_arg = 0.5;
+  args_info->exceeding_penalty_orig = NULL;
   
 }
 
@@ -116,6 +120,7 @@ void init_args_info(struct gengetopt_args_info *args_info)
   args_info->generative_help = gengetopt_args_info_help[7] ;
   args_info->d_max_help = gengetopt_args_info_help[8] ;
   args_info->g_max_help = gengetopt_args_info_help[9] ;
+  args_info->exceeding_penalty_help = gengetopt_args_info_help[10] ;
   
 }
 
@@ -207,6 +212,7 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->generative_orig));
   free_string_field (&(args_info->d_max_orig));
   free_string_field (&(args_info->g_max_orig));
+  free_string_field (&(args_info->exceeding_penalty_orig));
   
   
   for (i = 0; i < args_info->inputs_num; ++i)
@@ -262,6 +268,8 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "d-max", args_info->d_max_orig, 0);
   if (args_info->g_max_given)
     write_into_file(outfile, "g-max", args_info->g_max_orig, 0);
+  if (args_info->exceeding_penalty_given)
+    write_into_file(outfile, "exceeding-penalty", args_info->exceeding_penalty_orig, 0);
   
 
   i = EXIT_SUCCESS;
@@ -517,6 +525,7 @@ cmdline_parser_internal (
         { "generative",	1, NULL, 'G' },
         { "d-max",	1, NULL, 'd' },
         { "g-max",	1, NULL, 'g' },
+        { "exceeding-penalty",	1, NULL, 0 },
         { 0,  0, 0, 0 }
       };
 
@@ -636,6 +645,20 @@ cmdline_parser_internal (
                 &(local_args_info.neg_w_given), optarg, 0, "1", ARG_FLOAT,
                 check_ambiguity, override, 0, 0,
                 "neg-w", '-',
+                additional_error))
+              goto failure;
+          
+          }
+          /* The penalty for exceeding the limit of the number of interactions for each residue/base.  */
+          else if (strcmp (long_options[option_index].name, "exceeding-penalty") == 0)
+          {
+          
+          
+            if (update_arg( (void *)&(args_info->exceeding_penalty_arg), 
+                 &(args_info->exceeding_penalty_orig), &(args_info->exceeding_penalty_given),
+                &(local_args_info.exceeding_penalty_given), optarg, 0, "0.5", ARG_FLOAT,
+                check_ambiguity, override, 0, 0,
+                "exceeding-penalty", '-',
                 additional_error))
               goto failure;
           

@@ -24,3 +24,5 @@ option "d-max"		      d "The maximim number of iterations of the supervised lear
        			      	int default="500" optional
 option "g-max"		      g "The maximim number of iterations of the semi-supervised learning"
        			      	int default="500" optional
+option "exceeding-penalty"    - "The penalty for exceeding the limit of the number of interactions for each residue/base"
+       			      	float default="0.5" optional
