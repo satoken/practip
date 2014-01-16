@@ -670,7 +670,7 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
     if (!correct_int[i].empty())
       extract_aa_feature(aa, i, f);
   //   RNAs
-  std::vector<bool> rna_has_int(correct_int.size(), false);
+  std::vector<bool> rna_has_int(rna.seq.size(), false);
   for (uint i=0; i!=correct_int.size(); ++i)
     FOREACH (VU::const_iterator, j, correct_int[i])
       rna_has_int[*j] = true;
@@ -725,7 +725,7 @@ count_feature(const AA& aa, const RNA& rna, const VVU& predicted_int, std::vecto
   for (uint i=0; i!=predicted_int.size(); ++i)
     if (!predicted_int[i].empty())
       extract_aa_feature(aa, i, c);
-  std::vector<bool> rna_has_int(predicted_int.size(), false);
+  std::vector<bool> rna_has_int(rna.seq.size(), false);
   for (uint i=0; i!=predicted_int.size(); ++i)
     FOREACH (VU::const_iterator, j, predicted_int[i])
       rna_has_int[*j] = true;
@@ -987,7 +987,8 @@ read(const std::string& filename)
     sprintf(cmd, "%s %s", prog, filename.c_str());
     fp = popen(cmd, "r");
   }
-  
+
+  std::string ss_str;
   while (fgets(line, sizeof(line), fp)) {
     if (line[0]=='>' || line[0]=='f') continue;
     if (strchr(".()", line[0])) {
@@ -1003,12 +1004,13 @@ read(const std::string& filename)
             break;
         }
       }
-      this->ss+=line;
+      ss_str+=line;
     }
   }
   fclose(fp);
 
-  structural_profile(ss, ss);
+  assert(ss_str.size()==this->seq.size());
+  structural_profile(ss_str, ss);
 
   g2.resize(seq.size());
   std::transform(seq.begin(), seq.end(), g2.begin(), group2);
@@ -1178,7 +1180,6 @@ structural_profile(const std::string& ss, std::string& profile)
           default: ps='M'; break;
         }
         loop_degree.pop();
-        loop_degree.top();
         if (!loop_degree.empty()) loop_degree.top()++;
         bulge.pop();
         for (uint j=p[i]+1; j!=i; ++j)

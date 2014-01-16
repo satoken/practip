@@ -303,7 +303,7 @@ private:
   IloEnv env_;
   IloModel model_;
   IloExpr obj_;
-  IloBoolVarArray vars_;
+  IloIntVarArray vars_;
   IloCplex* cplex_;
   std::vector< std::vector< std::pair<int,double> > > m_;
   std::vector<int> bnd_;

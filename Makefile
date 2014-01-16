@@ -10,7 +10,7 @@ CPLEX_BASE=/opt/ibm/ILOG/CPLEX_Studio126
 CXXFLAGS_IP=-DWITH_CPLEX -DIL_STD -I$(CPLEX_BASE)/concert/include -I$(CPLEX_BASE)/cplex/include 
 LDFLAGS_IP=-L$(CPLEX_BASE)/concert/lib/x86-64_linux/static_pic -L$(CPLEX_BASE)/cplex/lib/x86-64_linux/static_pic -lconcert -lilocplex -lcplex -lpthread
 
-#CXXFLAGS=-g -Wall -D_GLIBCXX_DEBUG $(CXXFLAGS_IP)
+#CXXFLAGS=-g -std=c++11 -Wall -D_GLIBCXX_DEBUG $(CXXFLAGS_IP)
 CXXFLAGS=-O2 -std=c++11 -Wall -DNDEBUG $(CXXFLAGS_IP)
 LDFLAGS=$(LDFLAGS_IP)
 
