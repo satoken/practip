@@ -89,6 +89,15 @@ struct AccuracySummary
     sen_avg = avg(sen); sen_sd = sd(sen, sen2);
     fval_avg = avg(fval); fval_sd = sd(fval, fval2);
   }
+
+  void print(std::ostream& os) const
+  {
+    os << "PPV=" << ppv_avg << "(" << ppv_sd << ") "
+       << "SEN=" << sen_avg << "(" << sen_sd << ") "
+       << "F=" << fval_avg << "(" << fval_sd << ") ["
+       << tp << "," << tn << "," << fp << "," << fn << "]"
+       << std::endl;
+  }
 };
 
 static
@@ -234,6 +243,7 @@ PRactIP::
 cross_validation(uint n, void (PRactIP::*training)(const VU&))
 {
   AccuracySummary int_summary, aa_summary, rna_summary;
+  AccuracySummary int_summary_tr, aa_summary_tr, rna_summary_tr;
   for (uint i=0; i!=n; ++i) {
     VU train;
     VU test;
@@ -258,31 +268,34 @@ cross_validation(uint n, void (PRactIP::*training)(const VU&))
       aa_summary.add(aa_acc);
       rna_summary.add(rna_acc);
     }
+    FOREACH (VU::const_iterator, j, train) {
+      VVU predicted_int;
+      predict_interaction(labeled_aa_[*j], labeled_rna_[*j], predicted_int);
+      Accuracy int_acc, aa_acc, rna_acc;
+      calculate_accuracy(labeled_aa_[*j], labeled_rna_[*j],
+                         predicted_int, labeled_int_[*j],
+                         int_acc, aa_acc, rna_acc);
+      int_summary_tr.add(int_acc);
+      aa_summary_tr.add(aa_acc);
+      rna_summary_tr.add(rna_acc);
+    }
   }
-  int_summary.summary();
-  aa_summary.summary();
-  rna_summary.summary();
-  std::cout << "Interaction: "
-            << "PPV=" << int_summary.ppv_avg << "(" << int_summary.ppv_sd << ") "
-            << "SEN=" << int_summary.sen_avg << "(" << int_summary.sen_sd << ") "
-            << "F=" << int_summary.fval_avg << "(" << int_summary.fval_sd << ") ["
-            << int_summary.tp << "," << int_summary.tn << ","
-            << int_summary.fp << "," << int_summary.fn << "]"
-            << std::endl;
-  std::cout << "AA: "
-            << "PPV=" << aa_summary.ppv_avg << "(" << aa_summary.ppv_sd << ") "
-            << "SEN=" << aa_summary.sen_avg << "(" << aa_summary.sen_sd << ") "
-            << "F=" << aa_summary.fval_avg << "(" << aa_summary.fval_sd << ") ["
-            << aa_summary.tp << "," << aa_summary.tn << ","
-            << aa_summary.fp << "," << aa_summary.fn << "]"
-            << std::endl;
-  std::cout << "RNA: "
-            << "PPV=" << rna_summary.ppv_avg << "(" << rna_summary.ppv_sd << ") "
-            << "SEN=" << rna_summary.sen_avg << "(" << rna_summary.sen_sd << ") "
-            << "F=" << rna_summary.fval_avg << "(" << rna_summary.fval_sd << ") ["
-            << rna_summary.tp << "," << rna_summary.tn << ","
-            << rna_summary.fp << "," << rna_summary.fn << "]"
-            << std::endl;
+
+  std::cout << "[training data]" << std::endl;
+  std::cout << "Interaction: ";
+  int_summary_tr.summary(); int_summary_tr.print(std::cout);
+  std::cout << "AA: ";
+  aa_summary_tr.summary(); aa_summary_tr.print(std::cout);
+  std::cout << "RNA: ";
+  rna_summary_tr.summary(); rna_summary_tr.print(std::cout);
+
+  std::cout << "[test data]" << std::endl;
+  std::cout << "Interaction: ";
+  int_summary.summary(); int_summary.print(std::cout);
+  std::cout << "AA: ";
+  aa_summary.summary(); aa_summary.print(std::cout);
+  std::cout << "RNA: ";
+  rna_summary.summary(); rna_summary.print(std::cout);
 }
 
 void
