@@ -18,7 +18,20 @@
 #include "practip.h"
 #include "cmdline.h"
 
+//static
+uint PRactIP::epoch = 0;
+
 #define FOREACH(itr, i, v) for (itr i=(v).begin(); i!=(v).end(); ++i)
+
+static inline
+float
+clip(float w, float c)
+{
+  if(w >= 0)
+    return w>c ? w-c : 0.0;
+  else
+    return -clip(-w, c);
+}
 
 struct Accuracy
 {
@@ -173,15 +186,17 @@ void
 PRactIP::
 supervised_training(const VU& use_idx)
 {
+  // initalize the epoch
+  epoch = 0;
   VU idx(use_idx);
   for (uint t=0; t!=d_max_; ++t) {
-    float eta=eta0_/std::sqrt(t+1); // update learning rate
     float total_loss=0.0;
     std::random_shuffle(idx.begin(), idx.end()); // shuffle the order of training data
     FOREACH (VU::const_iterator, it, idx) {
-      total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_int_[*it], eta);
+      total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_int_[*it]);
     }
   }
+  regularization_fobos();
 }
 
 float
@@ -207,7 +222,7 @@ calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight
 
 float
 PRactIP::
-supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, float eta)
+supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int)
 {
   float loss=0.0;
   VVF int_weight;
@@ -233,8 +248,11 @@ supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, float 
   }
   std::cout << std::endl;
 #endif  
-  update_feature_weight(aa, rna, predicted_int, correct_int, eta);
-  loss += regularization_fobos(eta);
+  update_feature_weight(aa, rna, predicted_int, correct_int);
+  //loss += regularization_fobos();
+
+  epoch++;
+
   return loss;
 }
 
@@ -339,19 +357,18 @@ semisupervised_training(const VU& use_idx)
     std::swap(feature_count_, fc);
     std::swap(feature_group_count_, tc);
 
-    float eta=eta0_/std::sqrt(u+1);
     float total_loss=0.0;
     std::random_shuffle(idx.begin(), idx.end());
     FOREACH (VU::const_iterator, it, idx) {
-      total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_int_[*it], eta);
+      total_loss += supervised_training(labeled_aa_[*it], labeled_rna_[*it], labeled_int_[*it]);
     }
-  }    
+  }
+  regularization_fobos();
 }
 
 float
 PRactIP::
-unsupervised_training(const AA& aa, const RNA& rna,
-                      std::vector<FC>& fc, VU& tc) const
+unsupervised_training(const AA& aa, const RNA& rna, std::vector<FC>& fc, VU& tc)
 {
   VVU p;
   float score = predict_interaction(aa, rna, p);
@@ -361,7 +378,7 @@ unsupervised_training(const AA& aa, const RNA& rna,
 
 float
 PRactIP::
-predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int) const
+predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int)
 {
   VVF int_weight;
   VF aa_weight, rna_weight;
@@ -499,81 +516,120 @@ extract_rna_feature(const RNA& rna, uint j, Func& func) const
 
 struct EdgeWeightCalculator
 {
-  EdgeWeightCalculator(const std::vector<FM>& feature_weight,
-                       const std::vector<FC>& feature_count,
+  EdgeWeightCalculator(std::vector<PRactIP::FM>& feature_weight,
+                       const std::vector<PRactIP::FC>& feature_count,
                        const VF& feature_group_weight,
                        const VU& feature_group_count,
-                       VVF& edge_weight)
+                       VVF& edge_weight,
+                       const float& eta0,
+                       const float& lambda,
+                       const float& mu,
+                       const uint& epoch)
     : feature_weight_(feature_weight),
       feature_count_(feature_count),
       feature_group_weight_(feature_group_weight),
       feature_group_count_(feature_group_count),
-      edge_weight_(edge_weight)
+      edge_weight_(edge_weight),
+      eta0_(eta0), lambda_(lambda), mu_(mu),
+      epoch_(epoch)
   { }
 
   inline void operator()(uint fgroup, const char* fname, uint i, uint j)
   {
-    FM::const_iterator m;
+    PRactIP::FM::iterator m;
     m=feature_weight_[fgroup].find(fname);
     if (m!=feature_weight_[fgroup].end())
-      edge_weight_[i][j] += m->second;
+    {
+      if (m->second.last_updated<epoch_)
+      {
+        const float eta = eta0_/std::sqrt(m->second.sum_of_grad2);
+        const uint t = epoch_ - m->second.last_updated;
+        m->second.weight = clip(m->second.weight, lambda_*eta*t);
+        m->second.last_updated = epoch_;
+      }
+      edge_weight_[i][j] += m->second.weight;
+    }
 
     if (feature_group_count_[fgroup]) {
-      FC::const_iterator m;
+      PRactIP::FC::const_iterator m;
       m=feature_count_[fgroup].find(fname);
       if (m!=feature_count_[fgroup].end())
-        edge_weight_[i][j] += feature_group_weight_[fgroup]*m->second/feature_group_count_[fgroup];
+        edge_weight_[i][j] += -log(feature_group_weight_[fgroup]*m->second.pos/(m->second.pos+m->second.neg));
     }
   }
 
-  const std::vector<FM>& feature_weight_;
-  const std::vector<FC>& feature_count_;
+  std::vector<PRactIP::FM>& feature_weight_;
+  const std::vector<PRactIP::FC>& feature_count_;
   const VF& feature_group_weight_;
   const VU& feature_group_count_;
   VVF& edge_weight_;
+  const float& eta0_;
+  const float& lambda_;
+  const float& mu_;
+  const uint& epoch_;
 };
 
 struct NodeWeightCalculator
 {
-  NodeWeightCalculator(const std::vector<FM>& feature_weight,
-                       const std::vector<FC>& feature_count,
+  NodeWeightCalculator(std::vector<PRactIP::FM>& feature_weight,
+                       const std::vector<PRactIP::FC>& feature_count,
                        const VF& feature_group_weight,
                        const VU& feature_group_count,
-                       VF& node_weight)
+                       VF& node_weight,
+                       const float& eta0,
+                       const float& lambda,
+                       const float& mu,
+                       const uint& epoch)
     : feature_weight_(feature_weight),
       feature_count_(feature_count),
       feature_group_weight_(feature_group_weight),
       feature_group_count_(feature_group_count),
-      node_weight_(node_weight)
+      node_weight_(node_weight),
+      eta0_(eta0), lambda_(lambda), mu_(mu),
+      epoch_(epoch)
   { }
 
   inline void operator()(uint fgroup, const char* fname, uint i)
   {
-    FM::const_iterator m;
+    PRactIP::FM::iterator m;
     m=feature_weight_[fgroup].find(fname);
     if (m!=feature_weight_[fgroup].end())
-      node_weight_[i] += m->second;
+    {
+      if (m->second.last_updated<epoch_)
+      {
+        const float eta = eta0_/std::sqrt(m->second.sum_of_grad2);
+        const uint t = epoch_ - m->second.last_updated;
+        m->second.weight = clip(m->second.weight, lambda_*eta*t);
+        m->second.last_updated = epoch_;
+      }
+      node_weight_[i] += m->second.weight;
+    }
 
     if (feature_group_count_[fgroup]) {
-      FC::const_iterator m;
+      PRactIP::FC::const_iterator m;
       m=feature_count_[fgroup].find(fname);
       if (m!=feature_count_[fgroup].end())
-        node_weight_[i] += feature_group_weight_[fgroup]*m->second/feature_group_count_[fgroup];
+        node_weight_[i] += feature_group_weight_[fgroup]*m->second.pos/(m->second.pos+m->second.neg);
     }
   }
 
-  const std::vector<FM>& feature_weight_;
-  const std::vector<FC>& feature_count_;
+  std::vector<PRactIP::FM>& feature_weight_;
+  const std::vector<PRactIP::FC>& feature_count_;
   const VF& feature_group_weight_;
   const VU& feature_group_count_;
   VF& node_weight_;
+  const float& eta0_;
+  const float& lambda_;
+  const float& mu_;
+  const uint& epoch_;
 };
 
 void
 PRactIP::
-calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight) const
+calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight)
 {
-  EdgeWeightCalculator int_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, int_weight);
+  EdgeWeightCalculator int_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, int_weight,
+                                             eta0_, lambda_, mu_, epoch);
   int_weight.resize(aa.seq.size());
   for (uint i=0; i!=int_weight.size(); ++i) {
     int_weight[i].resize(rna.seq.size());
@@ -583,14 +639,16 @@ calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_w
     }
   }
 
-  NodeWeightCalculator aa_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, aa_weight);
+  NodeWeightCalculator aa_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, aa_weight,
+                                            eta0_, lambda_, mu_, epoch);
   aa_weight.resize(aa.seq.size());
   for (uint i=0; i!=aa_weight.size(); ++i) {
     aa_weight[i] = 0.0;
     extract_aa_feature(aa, i, aa_weight_calculator);
   }
 
-  NodeWeightCalculator rna_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, rna_weight);
+  NodeWeightCalculator rna_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, rna_weight,
+                                             eta0_, lambda_, mu_, epoch);
   rna_weight.resize(rna.seq.size());
   for (uint j=0; j!=rna_weight.size(); ++j) {
     rna_weight[j] = 0.0;
@@ -632,49 +690,31 @@ penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, con
       rna_weight[j] -= pos_w_+neg_w_;
 }
 
-struct FeatureWeightUpdater
+typedef std::unordered_map<std::string,int> GM;
+
+struct GradientCalculator
 {
-  FeatureWeightUpdater(std::vector<FM >& feature_weight,
-                       const std::vector<FC >& feature_count,
-                       VF& feature_group_weight,
-                       const VU& feature_group_count,
-                       float eta)
-    : feature_weight_(feature_weight),
-      feature_count_(feature_count),
-      feature_group_weight_(feature_group_weight),
-      feature_group_count_(feature_group_count),
-      eta_(eta)
-  { }
+  GradientCalculator(std::vector<GM>& g, int sign) : g_(g), sign_(sign) { }
 
   inline void operator()(uint fgroup, const char* fname, uint i=-1u, uint j=-1u)
   {
-    //std::cout << fgroup << ":" << fname << "=" << feature_weight_[fgroup][fname]; 
-    feature_weight_[fgroup].insert(std::make_pair(std::string(fname),0.0f)).first->second += eta_;
-    //std::cout << " -> " << feature_weight_[fgroup][fname] << std::endl;
-    if (feature_group_count_[fgroup]) {
-      FC::const_iterator m;
-      m=feature_count_[fgroup].find(fname);
-      if (m!=feature_count_[fgroup].end())
-        feature_group_weight_[fgroup] += eta_*m->second/feature_group_count_[fgroup];
-    }
+    g_[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += sign_;
   }
 
-  std::vector<FM >& feature_weight_;
-  const std::vector<FC >& feature_count_;
-  VF& feature_group_weight_;
-  const VU& feature_group_count_;
-  float eta_;
+  std::vector<GM>& g_;
+  int sign_;
 };
 
 void
 PRactIP::
-update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int, float eta)
+update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int)
 {
   assert(predicted_int.size()==correct_int.size());
 
-  // update feature weights in correct interactions, i.e., add eta
+  // calculate gradients in correct interactions
   //   interactions
-  FeatureWeightUpdater f(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, eta);
+  std::vector<GM> gr;
+  GradientCalculator f(gr, -1);
   for (uint i=0; i!=correct_int.size(); ++i)
     FOREACH (VU::const_iterator, j, correct_int[i])
       extract_int_feature(aa, rna, i, *j, f);
@@ -691,9 +731,9 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
     if (rna_has_int[j])
       extract_rna_feature(rna, j, f);
 
-  // update feature weights in predicted interactions, i.e., add -eta
+  // calculate gradients in predicted interactions
   //   interactions
-  FeatureWeightUpdater g(feature_weight_, feature_count_, feature_group_weight_, feature_group_count_, -eta);
+  GradientCalculator g(gr, +1);
   for (uint i=0; i!=predicted_int.size(); ++i) 
     FOREACH (VU::const_iterator, j, predicted_int[i]) 
       extract_int_feature(aa, rna, i, *j, g);
@@ -709,21 +749,69 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
   for (uint j=0; j!=rna_has_int.size(); ++j)
     if (rna_has_int[j])
       extract_rna_feature(rna, j, g);
+
+  // update feature weights by AdaGrad
+  for (uint k=0; k!=gr.size(); ++k)
+  {
+    FOREACH (GM::const_iterator, it, gr[k])
+    {
+      if (it->second!=0)
+      {
+        FM::iterator fe = feature_weight_[k].insert(std::make_pair(it->first,PRactIP::FeatureWeight())).first;
+        fe->second.sum_of_grad2 += it->second * it->second;
+        fe->second.weight -= eta0_/std::sqrt(fe->second.sum_of_grad2);
+        assert(fe->second.last_updated == epoch);
+      }
+    }
+  }
+}
+
+float
+PRactIP::
+regularization_fobos()
+{
+  // L1-norm
+  float sum1=0.0;
+  for (uint k=0; k!=feature_weight_.size(); ++k)
+  {
+    FOREACH (FM::iterator, it, feature_weight_[k])
+    {
+      if (it->second.last_updated<epoch)
+      {
+        const float eta = eta0_/std::sqrt(it->second.sum_of_grad2);
+        const uint t = epoch - it->second.last_updated;
+        it->second.weight = clip(it->second.weight, lambda_*eta*t);
+        it->second.last_updated = epoch;
+      }
+      sum1 += std::abs(it->second.weight);
+    }
+  }
+  
+  // L2-norm
+  const float eta = eta0_ / std::sqrt(epoch+1);
+  float sum2=0.0;
+  FOREACH (VF::iterator, fg, feature_group_weight_)
+  {
+    *fg /= (1.0+2.0*eta*mu_);
+    sum2 += *fg * *fg;
+  }
+  
+  return lambda_ * sum1 + mu_ * std::sqrt(sum2);
 }
 
 struct FeatureCounter
 {
-  FeatureCounter(std::vector<FC >& fc, VU& tc)
+  FeatureCounter(std::vector<PRactIP::FC>& fc, VU& tc)
     : fc_(fc), tc_(tc)
   { }
 
   inline void operator()(uint fgroup, const char* fname, uint i=-1u, uint j=-1u)
   {
-    fc_[fgroup].insert(std::make_pair(std::string(fname),0u)).first->second++;
+    fc_[fgroup].insert(std::make_pair(std::string(fname),PRactIP::FeatureCount())).first->second.pos++;
     tc_[fgroup]++;
   }
 
-  std::vector<FC >& fc_;
+  std::vector<PRactIP::FC>& fc_;
   VU& tc_;
 };
 
@@ -745,45 +833,6 @@ count_feature(const AA& aa, const RNA& rna, const VVU& predicted_int, std::vecto
   for (uint j=0; j!=rna_has_int.size(); ++j)
     if (rna_has_int[j])
       extract_rna_feature(rna, j, c);
-}
-
-static inline
-float
-clip(float w, float c)
-{
-  if(w >= 0)
-    return w>c ? w-c : 0.0;
-  else
-    return -clip(-w, c);
-}
-
-float
-PRactIP::
-regularization_fobos(float eta)
-{
-  float sum1=0.0;
-  for (uint i=0; i!=feature_weight_.size(); ++i)
-  {
-    FM::iterator j=feature_weight_[i].begin();
-    while (j!=feature_weight_[i].end()) {
-      //std::cout << i << ":" << j->first << "=" << j->second;
-      j->second = clip(j->second, eta*lambda_);
-      //std::cout << " => " << j->second << std::endl;
-      sum1 += std::abs(j->second);
-      if (j->second==0.0) {
-        feature_weight_[i].erase(j++);
-      } else
-        ++j;
-    }
-  }
-
-  float sum2=0.0;
-  FOREACH (VF::iterator, fg, feature_group_weight_) {
-    *fg /= (1.0+2.0*eta*mu_);
-    sum2 += *fg * *fg;
-  }
-  
-  return lambda_ * sum1 + mu_ * std::sqrt(sum2);
 }
 
 float

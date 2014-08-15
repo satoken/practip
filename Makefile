@@ -23,6 +23,6 @@ clean:
 practip: practip.o ip.o cmdline.o
 	$(CXX) -g -o practip practip.o ip.o cmdline.o $(LDFLAGS)
 
-practip.o: practip.cpp ip.h cmdline.h
+practip.o: practip.cpp ip.h cmdline.h practip.h
 ip.o: ip.cpp
 cmdline.o: cmdline.c
