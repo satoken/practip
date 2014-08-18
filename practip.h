@@ -102,7 +102,9 @@ public:
       feature_group_weight_(FG_NUM, 0.0),
       feature_group_count_(FG_NUM, 0),
       use_feature_(FG_NUM, true),
-      n_th_(1)
+      n_th_(1),
+      aa_int_max_(-1u),
+      rna_int_max_(-1u)
   { }
   
 public:
@@ -158,6 +160,8 @@ private:
   uint d_max_;
   uint g_max_;
   uint cv_fold_;
+  uint aa_int_max_;
+  uint rna_int_max_;
 
 private:
   static uint epoch;

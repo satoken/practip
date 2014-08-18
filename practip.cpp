@@ -920,7 +920,7 @@ predict_interaction(const AA& aa, const RNA& rna,
 
   for (uint i=0; i!=aa_len; ++i) {
     //sum_j z_ij <= max_int(ss_i)
-    int row = ip.make_constraint(IP::UP, 0, AA::max_intraction(aa.ss[i]));
+    int row = ip.make_constraint(IP::UP, 0, aa_int_max_==-1u ? AA::max_intraction(aa.ss[i]) : aa_int_max_);
     if (sl_x[i]>=0) ip.add_constraint(row, sl_x[i], -1);
     for (uint j=0; j!=rna_len; ++j) 
       if (z[i][j]>=0)
@@ -929,7 +929,7 @@ predict_interaction(const AA& aa, const RNA& rna,
 
   for (uint j=0; j!=rna_len; ++j) {
     //sum_i z_ij <= max_int(ss_j)
-    int row = ip.make_constraint(IP::UP, 0, RNA::max_intraction(rna.ss[j]));
+    int row = ip.make_constraint(IP::UP, 0, rna_int_max_==-1u ? RNA::max_intraction(rna.ss[j]) : rna_int_max_);
     if (sl_y[j]>=0) ip.add_constraint(row, sl_y[j], -1);
     for (uint i=0; i!=aa_len; ++i)
       if (z[i][j]>=0)
@@ -1277,6 +1277,10 @@ parse_options(int& argc, char**& argv)
   g_max_ = args_info.g_max_arg;
   cv_fold_ = args_info.cross_validation_arg;
   exceed_penalty_ = args_info.exceeding_penalty_arg;
+  if (args_info.aa_int_max_given)
+    aa_int_max_ = args_info.aa_int_max_arg;
+  if (args_info.rna_int_max_given)
+    rna_int_max_ = args_info.rna_int_max_arg;
   
   if (args_info.inputs_num==0)
   {

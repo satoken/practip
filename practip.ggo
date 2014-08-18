@@ -8,11 +8,11 @@ purpose "PRactIP: Protein-RNA intACTion using Integer Programming."
 
 usage "practip [OPTIONS] labeled-data [unlabeled-data]"
 
-option "cross-validation"     - "Perform the n-fold cross validation"
+option "cross-validation"     c "Perform the n-fold cross validation"
        			      	int default="0" optional
 option "eta"		      e "Initial step width for the subgradient optimization"
        			      	float default="0.5" optional
-option "pos-w"		      - "The weight for positive interactions"
+option "pos-w"		      w "The weight for positive interactions"
        			        float default="4" optional
 option "neg-w"		      - "The weight for negative interactions"
        			        float default="1" optional
@@ -22,7 +22,12 @@ option "generative"	      G "The weight for the regularization term of the gener
        			      	float default="1.0" optional
 option "d-max"		      d "The maximim number of iterations of the supervised learning"
        			      	int default="500" optional
-option "g-max"		      g "The maximim number of iterations of the semi-supervised learning"
+option "g-max"		      g "The maximum number of iterations of the semi-supervised learning"
        			      	int default="500" optional
+option "aa-int-max"	      - "The maximum number of interations of each amino acid"
+       			      	int default="3" optional
+option "rna-int-max"	      - "The maximum number of interations of each nucleotide"
+       			      	int default="4" optional
+
 option "exceeding-penalty"    - "The penalty for exceeding the limit of the number of interactions for each residue/base"
        			      	float default="0.5" optional
