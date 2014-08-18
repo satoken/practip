@@ -540,9 +540,10 @@ struct EdgeWeightCalculator
     m=feature_weight_[fgroup].find(fname);
     if (m!=feature_weight_[fgroup].end())
     {
+      // lazy update for FOBOS
       if (m->second.last_updated<epoch_)
       {
-        const float eta = eta0_/std::sqrt(m->second.sum_of_grad2);
+        const float eta = eta0_/std::sqrt(1.0+m->second.sum_of_grad2);
         const uint t = epoch_ - m->second.last_updated;
         m->second.weight = clip(m->second.weight, lambda_*eta*t);
         m->second.last_updated = epoch_;
@@ -595,9 +596,10 @@ struct NodeWeightCalculator
     m=feature_weight_[fgroup].find(fname);
     if (m!=feature_weight_[fgroup].end())
     {
+      // lazy update for FOBOS
       if (m->second.last_updated<epoch_)
       {
-        const float eta = eta0_/std::sqrt(m->second.sum_of_grad2);
+        const float eta = eta0_/std::sqrt(1.0+m->second.sum_of_grad2);
         const uint t = epoch_ - m->second.last_updated;
         m->second.weight = clip(m->second.weight, lambda_*eta*t);
         m->second.last_updated = epoch_;
@@ -713,7 +715,7 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
 
   // calculate gradients in correct interactions
   //   interactions
-  std::vector<GM> gr;
+  std::vector<GM> gr(FG_NUM);
   GradientCalculator f(gr, -1);
   for (uint i=0; i!=correct_int.size(); ++i)
     FOREACH (VU::const_iterator, j, correct_int[i])
@@ -758,9 +760,17 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
       if (it->second!=0)
       {
         FM::iterator fe = feature_weight_[k].insert(std::make_pair(it->first,PRactIP::FeatureWeight())).first;
+        fe->second.weight -= it->second * eta0_/std::sqrt(1.0+fe->second.sum_of_grad2);
         fe->second.sum_of_grad2 += it->second * it->second;
-        fe->second.weight -= eta0_/std::sqrt(fe->second.sum_of_grad2);
-        assert(fe->second.last_updated == epoch);
+#if 0
+        std::cerr << epoch << ", "
+                  << k << ", "
+                  << it->first << ", "
+                  << it->second << ", "
+                  << fe->second.weight << ", "
+                  << eta0_/std::sqrt(1.0+fe->second.sum_of_grad2) << std::endl;
+#endif
+        //assert(fe->second.last_updated == epoch);
       }
     }
   }
@@ -778,7 +788,7 @@ regularization_fobos()
     {
       if (it->second.last_updated<epoch)
       {
-        const float eta = eta0_/std::sqrt(it->second.sum_of_grad2);
+        const float eta = eta0_/std::sqrt(1.0+it->second.sum_of_grad2);
         const uint t = epoch - it->second.last_updated;
         it->second.weight = clip(it->second.weight, lambda_*eta*t);
         it->second.last_updated = epoch;
