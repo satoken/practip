@@ -80,6 +80,7 @@ struct AccuracySummary
     ppv2 += acc.ppv*acc.ppv;
     sen += acc.sen;
     sen2 += acc.sen*acc.sen;
+    fval += acc.fval;
     fval2 += acc.fval*acc.fval;
     n++;
   }
