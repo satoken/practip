@@ -27,6 +27,8 @@ else
 fi
 
 # Checks for libraries.
+AC_CHECK_LIB([pthread], [pthread_create])
+
 # FIXME: Replace `main' with a function in `-lglpk':
 # glpk
 AC_ARG_WITH([glpk], AS_HELP_STRING([--with-glpk], [support GNU linear programming kit]),
