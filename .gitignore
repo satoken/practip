@@ -1,0 +1,9 @@
+*~
+*.[ao]
+autom4te.cache/
+src/.deps/
+Makefile
+config.log
+config.h
+src/practip
+practip*.tar.gz
