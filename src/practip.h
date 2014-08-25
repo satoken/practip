@@ -57,10 +57,11 @@ public:
 
   struct FeatureCount {
     uint pos;
-    uint neg;
+    uint total;
 
-    FeatureCount() : pos(0), neg(0) {}
-    float prob() const { return static_cast<float>(pos)/(pos+neg); }
+    FeatureCount() : pos(0), total(0) {}
+    float prob() const { return static_cast<float>(pos)/total; }
+    float ratio(float th) const { return pos>0 ? log(prob())-log(th) : 0.0; }
   };
 
   typedef std::unordered_map<std::string,FeatureWeight> FM;
@@ -99,8 +100,7 @@ public:
   PRactIP()
     : feature_weight_(FG_NUM),
       feature_count_(FG_NUM),
-      feature_group_weight_(FG_NUM, 0.0),
-      feature_group_count_(FG_NUM, 0),
+      feature_group_weight_(FG_NUM),
       use_feature_(FG_NUM, true),
       n_th_(1),
       aa_int_max_(-1u),
@@ -117,7 +117,7 @@ private:
   void supervised_training();
   void supervised_training(const VU& use_idx);
   float supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int);
-  float unsupervised_training(const AA& aa, const RNA& rna, std::vector<FC>& fc, VU& tc);
+  float unsupervised_training(const AA& aa, const RNA& rna, std::vector<FC>& fc);
   void semisupervised_training();
   void semisupervised_training(const VU& use_idx);
   void cross_validation(uint n, void (PRactIP::*train)(const VU&));
@@ -132,7 +132,7 @@ private:
   void calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight);
   void penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const;
   void update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int);
-  void count_feature(const AA& aa, const RNA& rna, const VVU& predicted_int, std::vector<FC>& fc, VU& tc) const;
+  void count_feature(const AA& aa, const RNA& rna, const VVU& predicted_int, std::vector<FC>& fc) const;
   float regularization_fobos();
   float predict_interaction(const AA& aa, const RNA& rna, const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const;
   float calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, const VVU& interactions) const;
@@ -146,8 +146,7 @@ private:
   
   std::vector<FM> feature_weight_;
   std::vector<FC> feature_count_;
-  VF feature_group_weight_;
-  VU feature_group_count_;
+  std::vector<FeatureWeight> feature_group_weight_;
   std::vector<bool> use_feature_;
 
   float pos_w_;
