@@ -616,7 +616,11 @@ struct EdgeWeightCalculator
       {
         const float eta = eta0_/std::sqrt(1.0+feature_group_weight_[fgroup].sum_of_grad2);
         const uint t = epoch_ - feature_group_weight_[fgroup].last_updated;
+#ifdef L2NORM
         feature_group_weight_[fgroup].weight *= std::pow(-(1.0+2.0*eta*mu_), t);
+#else
+        feature_group_weight_[fgroup].weight = clip(feature_group_weight_[fgroup].weight, mu_*eta*t);
+#endif
         feature_group_weight_[fgroup].last_updated = epoch_;
       }
       edge_weight_[i][j] += feature_group_weight_[fgroup].weight * c->second.ratio(th_);
@@ -678,7 +682,11 @@ struct NodeWeightCalculator
       {
         const float eta = eta0_/std::sqrt(1.0+feature_group_weight_[fgroup].sum_of_grad2);
         const uint t = epoch_ - feature_group_weight_[fgroup].last_updated;
+#ifdef L2NORM
         feature_group_weight_[fgroup].weight *= std::pow(-(1.0+2.0*eta*mu_), t);
+#else
+        feature_group_weight_[fgroup].weight = clip(feature_group_weight_[fgroup].weight, mu_*eta*t);
+#endif
         feature_group_weight_[fgroup].last_updated = epoch_;
       }
       node_weight_[i] += feature_group_weight_[fgroup].weight * c->second.ratio(th_);
@@ -887,13 +895,25 @@ regularization_fobos()
     {
       const float eta = eta0_/std::sqrt(1.0+feature_group_weight_[k].sum_of_grad2);
       const uint t = epoch - feature_group_weight_[k].last_updated;
+#ifdef L2NORM
       feature_group_weight_[k].weight *= std::pow(-(1.0+2.0*eta*mu_), t);
+#else
+      feature_group_weight_[k].weight = clip(feature_group_weight_[k].weight, mu_*eta*t);
+#endif
       feature_group_weight_[k].last_updated = epoch;
     }
+#ifdef L2NORM
     sum2 += feature_group_weight_[k].weight * feature_group_weight_[k].weight;
+#else
+    sum2 += std::abs(feature_group_weight_[k].weight);
+#endif
   }
   
+#ifdef L2NORM
   return lambda_ * sum1 + mu_ * std::sqrt(sum2);
+#else
+  return lambda_ * sum1 + mu_ * sum2;
+#endif
 }
 
 struct FeatureCounter
