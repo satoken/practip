@@ -784,6 +784,11 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
           const float g =  it->second * fc->second.ratio(TH);
           feature_group_weight_[k].weight -= g * eta0_/std::sqrt(1.0+feature_group_weight_[k].sum_of_grad2);
           feature_group_weight_[k].sum_of_grad2 += g * g;
+#if 0
+          std::cerr << k << ", " << it->first << ", " 
+                    << feature_group_weight_[k].weight << ", "
+                    << feature_group_weight_[k].sum_of_grad2 << std::endl;
+#endif
         }
       }
     }

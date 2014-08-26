@@ -61,7 +61,7 @@ public:
 
     FeatureCount() : pos(0), total(0) {}
     float prob() const { return static_cast<float>(pos)/total; }
-    float ratio(float th) const { return pos>0 ? log(prob())-log(th) : 0.0; }
+    float ratio(float th) const { return pos>0 ? std::max(0.0, log(prob())-log(th)) : 0.0; }
   };
 
   typedef std::unordered_map<std::string,FeatureWeight> FM;

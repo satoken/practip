@@ -51,16 +51,16 @@ struct gengetopt_args_info
   float neg_w_arg;	/**< @brief The weight for negative interactions (default='1').  */
   char * neg_w_orig;	/**< @brief The weight for negative interactions original value given at command line.  */
   const char *neg_w_help; /**< @brief The weight for negative interactions help description.  */
-  float discriminative_arg;	/**< @brief The weight for the regularization term of the discriminative model (default='1.0').  */
+  float discriminative_arg;	/**< @brief The weight for the regularization term of the discriminative model (default='0.25').  */
   char * discriminative_orig;	/**< @brief The weight for the regularization term of the discriminative model original value given at command line.  */
   const char *discriminative_help; /**< @brief The weight for the regularization term of the discriminative model help description.  */
   float generative_arg;	/**< @brief The weight for the regularization term of the generative models (default='1.0').  */
   char * generative_orig;	/**< @brief The weight for the regularization term of the generative models original value given at command line.  */
   const char *generative_help; /**< @brief The weight for the regularization term of the generative models help description.  */
-  int d_max_arg;	/**< @brief The maximim number of iterations of the supervised learning (default='500').  */
+  int d_max_arg;	/**< @brief The maximim number of iterations of the supervised learning (default='25').  */
   char * d_max_orig;	/**< @brief The maximim number of iterations of the supervised learning original value given at command line.  */
   const char *d_max_help; /**< @brief The maximim number of iterations of the supervised learning help description.  */
-  int g_max_arg;	/**< @brief The maximum number of iterations of the semi-supervised learning (default='500').  */
+  int g_max_arg;	/**< @brief The maximum number of iterations of the semi-supervised learning (default='5').  */
   char * g_max_orig;	/**< @brief The maximum number of iterations of the semi-supervised learning original value given at command line.  */
   const char *g_max_help; /**< @brief The maximum number of iterations of the semi-supervised learning help description.  */
   int aa_int_max_arg;	/**< @brief The maximum number of interations of each amino acid (default='3').  */

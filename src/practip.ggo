@@ -17,13 +17,13 @@ option "pos-w"		      w "The weight for positive interactions"
 option "neg-w"		      - "The weight for negative interactions"
        			        float default="1" optional
 option "discriminative"	      D "The weight for the regularization term of the discriminative model"
-       			      	float default="1.0" optional
+       			      	float default="0.25" optional
 option "generative"	      G "The weight for the regularization term of the generative models"
        			      	float default="1.0" optional
 option "d-max"		      d "The maximim number of iterations of the supervised learning"
-       			      	int default="500" optional
+       			      	int default="25" optional
 option "g-max"		      g "The maximum number of iterations of the semi-supervised learning"
-       			      	int default="500" optional
+       			      	int default="5" optional
 option "aa-int-max"	      - "The maximum number of interations of each amino acid"
        			      	int default="3" optional
 option "rna-int-max"	      - "The maximum number of interations of each nucleotide"
