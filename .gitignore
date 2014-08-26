@@ -4,6 +4,10 @@ autom4te.cache/
 src/.deps/
 Makefile
 config.log
+config.status
 config.h
 src/practip
 practip*.tar.gz
+src/GPATH
+src/GRTAGS
+src/GTAGS

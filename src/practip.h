@@ -114,6 +114,8 @@ public:
 private:  
   uint load_labeled_data(const std::string& filename);
   uint load_unlabeled_data(const std::string& filename);
+  void store_parameters(const char* filename) const;
+  void restore_parameters(const char* filename);
   void supervised_training();
   void supervised_training(const VU& use_idx);
   float supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int);
@@ -149,12 +151,15 @@ private:
   std::vector<FeatureWeight> feature_group_weight_;
   std::vector<bool> use_feature_;
 
+  bool train_mode_;
+  std::string param_file_;
   float pos_w_;
   float neg_w_;
   float lambda_;
   float mu_;
   float eta0_;
   float exceed_penalty_;
+  float threshold_;
   uint n_th_;
   uint d_max_;
   uint g_max_;

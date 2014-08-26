@@ -39,6 +39,12 @@ struct gengetopt_args_info
 {
   const char *help_help; /**< @brief Print help and exit help description.  */
   const char *version_help; /**< @brief Print version and exit help description.  */
+  char * train_arg;	/**< @brief Train the parameters from given data.  */
+  char * train_orig;	/**< @brief Train the parameters from given data original value given at command line.  */
+  const char *train_help; /**< @brief Train the parameters from given data help description.  */
+  char * predict_arg;	/**< @brief Predict interactions.  */
+  char * predict_orig;	/**< @brief Predict interactions original value given at command line.  */
+  const char *predict_help; /**< @brief Predict interactions help description.  */
   int cross_validation_arg;	/**< @brief Perform the n-fold cross validation (default='0').  */
   char * cross_validation_orig;	/**< @brief Perform the n-fold cross validation original value given at command line.  */
   const char *cross_validation_help; /**< @brief Perform the n-fold cross validation help description.  */
@@ -72,9 +78,14 @@ struct gengetopt_args_info
   float exceeding_penalty_arg;	/**< @brief The penalty for exceeding the limit of the number of interactions for each residue/base (default='0.5').  */
   char * exceeding_penalty_orig;	/**< @brief The penalty for exceeding the limit of the number of interactions for each residue/base original value given at command line.  */
   const char *exceeding_penalty_help; /**< @brief The penalty for exceeding the limit of the number of interactions for each residue/base help description.  */
+  float threshold_arg;	/**< @brief Specify the threshold for the generative probability (default='0.001').  */
+  char * threshold_orig;	/**< @brief Specify the threshold for the generative probability original value given at command line.  */
+  const char *threshold_help; /**< @brief Specify the threshold for the generative probability help description.  */
   
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
+  unsigned int train_given ;	/**< @brief Whether train was given.  */
+  unsigned int predict_given ;	/**< @brief Whether predict was given.  */
   unsigned int cross_validation_given ;	/**< @brief Whether cross-validation was given.  */
   unsigned int eta_given ;	/**< @brief Whether eta was given.  */
   unsigned int pos_w_given ;	/**< @brief Whether pos-w was given.  */
@@ -86,6 +97,7 @@ struct gengetopt_args_info
   unsigned int aa_int_max_given ;	/**< @brief Whether aa-int-max was given.  */
   unsigned int rna_int_max_given ;	/**< @brief Whether rna-int-max was given.  */
   unsigned int exceeding_penalty_given ;	/**< @brief Whether exceeding-penalty was given.  */
+  unsigned int threshold_given ;	/**< @brief Whether threshold was given.  */
 
   char **inputs ; /**< @brief unamed options (options without names) */
   unsigned inputs_num ; /**< @brief unamed options number */

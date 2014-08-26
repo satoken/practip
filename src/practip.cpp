@@ -18,12 +18,38 @@
 #include "practip.h"
 #include "cmdline.h"
 
-#define TH 0.001
+#define FOREACH(itr, i, v) for (itr i=(v).begin(); i!=(v).end(); ++i)
 
 //static
 uint PRactIP::epoch = 0;
 
-#define FOREACH(itr, i, v) for (itr i=(v).begin(); i!=(v).end(); ++i)
+static
+const char *groupname[] = {
+  "Pro_3",                      // FG_P_3,
+  "Pro_5",                      // FG_P_5,
+  "RNA_3",                      // FG_R_3,
+  "RNA_5",                      // FG_R_5,
+  "Pro_3-RNA_3",                // FG_P_3_R_3,
+  "Pro_5-RNA_5",                // FG_P_5_R_5,
+  "ProSS_3",                    // FG_Pss_3,
+  "ProSS_5",                    // FG_Pss_5,
+  "RNASS_3",                    // FG_Rss_3,
+  "RNASS_5",                    // FG_Rss_5,
+  "ProSS_3-RNASS_3",            // FG_Pss_3_Rss_3,
+  "ProSS_5-RNASS_5",            // FG_Pss_5_Rss_5,
+  "ProG10_5",                   // FG_Pg10_5,
+  "ProG10_7",                   // FG_Pg10_7,
+  "ProG10_3-RNA_3",             // FG_Pg10_3_R_3,
+  "ProG10_3-RNASS_3",           // FG_Pg10_3_Rss_3,
+  "ProG10_5-RNA_5",             // FG_Pg10_5_R_5,
+  "ProG10_5-RNASS_5",           // FG_Pg10_5_Rss_5,
+  "ProG4_5",                    // FG_Pg4_5,
+  "ProG4_7",                    // FG_Pg4_7,
+  "ProG4_3-RNA_3",              // FG_Pg4_3_R_3,
+  "ProG4_3-RNASS_3",            // FG_Pg4_3_Rss_3,
+  "ProG4_5-RNA_5",              // FG_Pg4_5_R_5,
+  "ProG4_5-RNASS_5",            // FG_Pg4_5_Rss_5,
+};
 
 static inline
 float
@@ -516,6 +542,37 @@ extract_rna_feature(const RNA& rna, uint j, Func& func) const
   }
 }
 
+void
+PRactIP::
+store_parameters(const char* filename) const
+{
+  std::ofstream os(filename);
+  if (!os) throw static_cast<const char*>(strerror(errno));
+
+  for (uint k=0; k!=feature_weight_.size(); ++k)
+  {
+    os << "[ " << groupname[k] << " weight ]" << std::endl;
+    FOREACH (FM::const_iterator, it, feature_weight_[k])
+    {
+      if (it->second.weight!=0.0)
+        os << it->first << " " << it->second.weight << std::endl;
+    }
+    os << std::endl;
+  }
+
+  for (uint k=0; k!=feature_count_.size(); ++k)
+  {
+    os << "[ " << groupname[k] << " count ]" << std::endl;
+    os << feature_group_weight_[k].weight << std::endl;
+    FOREACH (FC::const_iterator, it, feature_count_[k])
+    {
+      if (it->second.pos!=0)
+        os << it->first << " " << it->second.pos << " " << it->second.total << std::endl;
+    }
+    os << std::endl;
+  }
+}
+
 struct EdgeWeightCalculator
 {
   EdgeWeightCalculator(std::vector<PRactIP::FM>& feature_weight,
@@ -525,13 +582,15 @@ struct EdgeWeightCalculator
                        const float& eta0,
                        const float& lambda,
                        const float& mu,
-                       const uint& epoch)
+                       const uint& epoch,
+                       float th)
     : feature_weight_(feature_weight),
       feature_count_(feature_count),
       feature_group_weight_(feature_group_weight),
       edge_weight_(edge_weight),
       eta0_(eta0), lambda_(lambda), mu_(mu),
-      epoch_(epoch)
+      epoch_(epoch),
+      th_(th)
   { }
 
   inline void operator()(uint fgroup, const char* fname, uint i, uint j)
@@ -560,7 +619,7 @@ struct EdgeWeightCalculator
         feature_group_weight_[fgroup].weight *= std::pow(-(1.0+2.0*eta*mu_), t);
         feature_group_weight_[fgroup].last_updated = epoch_;
       }
-      edge_weight_[i][j] += feature_group_weight_[fgroup].weight * c->second.ratio(TH);
+      edge_weight_[i][j] += feature_group_weight_[fgroup].weight * c->second.ratio(th_);
     }
   }
 
@@ -572,6 +631,7 @@ struct EdgeWeightCalculator
   const float& lambda_;
   const float& mu_;
   const uint& epoch_;
+  float th_;
 };
 
 struct NodeWeightCalculator
@@ -583,13 +643,15 @@ struct NodeWeightCalculator
                        const float& eta0,
                        const float& lambda,
                        const float& mu,
-                       const uint& epoch)
+                       const uint& epoch,
+                       float th)
     : feature_weight_(feature_weight),
       feature_count_(feature_count),
       feature_group_weight_(feature_group_weight),
       node_weight_(node_weight),
       eta0_(eta0), lambda_(lambda), mu_(mu),
-      epoch_(epoch)
+      epoch_(epoch),
+      th_(th)
   { }
 
   inline void operator()(uint fgroup, const char* fname, uint i)
@@ -619,7 +681,7 @@ struct NodeWeightCalculator
         feature_group_weight_[fgroup].weight *= std::pow(-(1.0+2.0*eta*mu_), t);
         feature_group_weight_[fgroup].last_updated = epoch_;
       }
-      node_weight_[i] += feature_group_weight_[fgroup].weight * c->second.ratio(TH);
+      node_weight_[i] += feature_group_weight_[fgroup].weight * c->second.ratio(th_);
     }
   }
 
@@ -631,6 +693,7 @@ struct NodeWeightCalculator
   const float& lambda_;
   const float& mu_;
   const uint& epoch_;
+  float th_;
 };
 
 void
@@ -638,7 +701,7 @@ PRactIP::
 calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight)
 {
   EdgeWeightCalculator int_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, int_weight,
-                                             eta0_, lambda_, mu_, epoch);
+                                             eta0_, lambda_, mu_, epoch, threshold_);
   int_weight.resize(aa.seq.size());
   for (uint i=0; i!=int_weight.size(); ++i) {
     int_weight[i].resize(rna.seq.size());
@@ -649,7 +712,7 @@ calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_w
   }
 
   NodeWeightCalculator aa_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, aa_weight,
-                                            eta0_, lambda_, mu_, epoch);
+                                            eta0_, lambda_, mu_, epoch, threshold_);
   aa_weight.resize(aa.seq.size());
   for (uint i=0; i!=aa_weight.size(); ++i) {
     aa_weight[i] = 0.0;
@@ -657,7 +720,7 @@ calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_w
   }
 
   NodeWeightCalculator rna_weight_calculator(feature_weight_, feature_count_, feature_group_weight_, rna_weight,
-                                             eta0_, lambda_, mu_, epoch);
+                                             eta0_, lambda_, mu_, epoch, threshold_);
   rna_weight.resize(rna.seq.size());
   for (uint j=0; j!=rna_weight.size(); ++j) {
     rna_weight[j] = 0.0;
@@ -781,7 +844,7 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
 
         FC::const_iterator fc = feature_count_[k].find(it->first);
         if (fc!=feature_count_[k].end()) {
-          const float g =  it->second * fc->second.ratio(TH);
+          const float g =  it->second * fc->second.ratio(threshold_);
           feature_group_weight_[k].weight -= g * eta0_/std::sqrt(1.0+feature_group_weight_[k].sum_of_grad2);
           feature_group_weight_[k].sum_of_grad2 += g * g;
 #if 0
@@ -1318,6 +1381,16 @@ parse_options(int& argc, char**& argv)
   gengetopt_args_info args_info;
   if (cmdline_parser(argc, argv, &args_info)!=0) exit(1);
 
+  if (args_info.train_given)
+  {
+    train_mode_ = true;
+    param_file_ = args_info.train_arg;
+  }
+  else if (args_info.predict_given)
+  {
+    train_mode_ = false;
+    param_file_ = args_info.predict_arg;
+  }
   pos_w_ = args_info.pos_w_arg;
   neg_w_ = args_info.neg_w_arg;
   lambda_ = args_info.discriminative_arg;
@@ -1327,6 +1400,7 @@ parse_options(int& argc, char**& argv)
   g_max_ = args_info.g_max_arg;
   cv_fold_ = args_info.cross_validation_arg;
   exceed_penalty_ = args_info.exceeding_penalty_arg;
+  threshold_ = args_info.threshold_arg;
   if (args_info.aa_int_max_given)
     aa_int_max_ = args_info.aa_int_max_arg;
   if (args_info.rna_int_max_given)
@@ -1357,6 +1431,12 @@ run()
       semisupervised_cross_validation(cv_fold_);
     else
       supervised_cross_validation(cv_fold_);
+  } else if (train_mode_){
+    if (unlabeled_aa_.size()>0)
+      semisupervised_training();
+    else
+      supervised_training();
+    store_parameters(param_file_.c_str());
   } else {
     assert(!"not implemented yet");
   }
