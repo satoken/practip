@@ -3,16 +3,9 @@
 
 #include <vector>
 #include <string>
-
 #include <unordered_map>
-
-typedef unsigned int uint;
-typedef std::vector<float> VF;
-typedef std::vector<VF> VVF;
-typedef std::vector<int> VI;
-typedef std::vector<VI> VVI;
-typedef std::vector<uint> VU;
-typedef std::vector<VU> VVU;
+#include "typedef.h"
+#include "ip.h"
 
 class PRactIP
 {
@@ -21,8 +14,11 @@ public:
     std::string seq;
     std::string ss;
     std::string g2;
-
+    
+    RNA() {}
+    RNA(const std::string& filename) : RNA() { read(filename); }
     int read(const std::string& filename);
+
     static char group2(char);
     static void structural_profile(const std::string& ss, std::string& profile);
 
@@ -37,6 +33,8 @@ public:
     std::string g4;
     std::string g2;
     
+    AA() {}
+    AA(const std::string& filename) : AA() { read(filename); }
     int read(const std::string& filename);
 
     static char group10(char a);
@@ -47,6 +45,29 @@ public:
     static uint max_intraction(char x);
   };
 
+  template < class T >
+  class Alignment
+  {
+  public:
+    Alignment() : q_score_(), idx_() {}
+    Alignment(const char* algn, const char* score);
+
+  public:
+    uint num_sequences() const { return idx_.size(); }
+    uint num_columns() const { return q_score_.size(); }
+    bool read_alignment(const char* filename);
+    bool read_scores(const char* filename);
+    const VF& q_score() const { return q_score_; }
+    const VVU& idx() const { return idx_; }
+    void add_seq(const T& seq) { seq_.push_back(seq); }
+    const T& seq(uint i) const { return seq_[i]; }
+
+  private:
+    VF q_score_;
+    VVU idx_;
+    std::vector<T> seq_;
+  };
+  
   struct FeatureWeight {
     float weight;
     float sum_of_grad2;
@@ -55,17 +76,7 @@ public:
     FeatureWeight() : weight(0.0), sum_of_grad2(0.0), last_updated(0) {}
   };
 
-  struct FeatureCount {
-    uint pos;
-    uint total;
-
-    FeatureCount() : pos(0), total(0) {}
-    float prob() const { return static_cast<float>(pos)/total; }
-    float ratio(float th) const { return pos>0 ? std::max(0.0, log(prob())-log(th)) : 0.0; }
-  };
-
   typedef std::unordered_map<std::string,FeatureWeight> FM;
-  typedef std::unordered_map<std::string,FeatureCount> FC;
 
   // Feature Groups
   enum {
@@ -99,8 +110,6 @@ public:
 public:
   PRactIP()
     : feature_weight_(FG_NUM),
-      feature_count_(FG_NUM),
-      feature_group_weight_(FG_NUM),
       use_feature_(FG_NUM, true),
       n_th_(1),
       aa_int_max_(-1u),
@@ -116,39 +125,52 @@ private:
   uint load_unlabeled_data(const std::string& filename);
   void store_parameters(const char* filename) const;
   void restore_parameters(const char* filename);
-  void supervised_training();
-  void supervised_training(const VU& use_idx);
-  float supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int);
-  float unsupervised_training(const AA& aa, const RNA& rna, std::vector<FC>& fc);
+
+  void supervised_training() { semisupervised_training(); }
+  void supervised_training(const VU& use_idx) { semisupervised_training(use_idx); }
+  float supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin=true);
   void semisupervised_training();
   void semisupervised_training(const VU& use_idx);
-  void cross_validation(uint n, void (PRactIP::*train)(const VU&));
-  void supervised_cross_validation(uint n);
-  void semisupervised_cross_validation(uint n);
-  float predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int);
+
+  void cross_validation(uint n);
+
+
+  template < class Func > void extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func func) const;
+  template < class Func > void extract_aa_feature(const AA& aa, uint i, Func func) const;
+  template < class Func > void extract_rna_feature(const RNA& rna, uint j, Func func) const;
 
   void read_correct_interaction(const std::string& filename, VVU& correct_int) const; 
-  template < class Func > void extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func& func) const;
-  template < class Func > void extract_aa_feature(const AA& aa, uint i, Func& func) const;
-  template < class Func > void extract_rna_feature(const RNA& rna, uint j, Func& func) const;
   void calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight);
   void penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const;
   void update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int);
-  void count_feature(const AA& aa, const RNA& rna, const VVU& predicted_int, std::vector<FC>& fc) const;
+
+  float update_fobos(uint fgroup, const char* fname);
   float regularization_fobos();
+
+  float predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int);
   float predict_interaction(const AA& aa, const RNA& rna, const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const;
+  void predict_interaction_object(const AA& aa, const RNA& rna,
+                                  const VVF& int_weight, const VF& aa_weight, const VF& rna_weight,
+                                  VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip) const;
+  void predict_interaction_constraints(const AA& aa, const RNA& rna,
+                                       const VI& x, const VI& y, const VVI& z, const VI& sl_x, const VI& sl_y, 
+                                       IP& ip) const;
+
+  float predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna, VVVU& predicted_int);
+  float predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna, 
+                                   const VVVF& int_weight, const VVF& aa_weight, const VVF& rna_weight, 
+                                   VVVU& predicted_int) const;
+
   float calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, const VVU& interactions) const;
 
 private:
   std::vector<AA> labeled_aa_;
   std::vector<RNA> labeled_rna_;
   std::vector<VVU> labeled_int_;
-  std::vector<AA> unlabeled_aa_;
-  std::vector<RNA> unlabeled_rna_;
+  std::vector<Alignment<AA>> unlabeled_aa_;
+  std::vector<Alignment<RNA>> unlabeled_rna_;
   
   std::vector<FM> feature_weight_;
-  std::vector<FC> feature_count_;
-  std::vector<FeatureWeight> feature_group_weight_;
   std::vector<bool> use_feature_;
 
   bool train_mode_;
@@ -159,7 +181,6 @@ private:
   float mu_;
   float eta0_;
   float exceed_penalty_;
-  float threshold_;
   uint n_th_;
   uint d_max_;
   uint g_max_;
@@ -172,3 +193,7 @@ private:
 };
 
 #endif
+
+// Local Variables:
+// mode: C++
+// End:

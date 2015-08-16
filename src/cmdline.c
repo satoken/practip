@@ -36,20 +36,20 @@ const char *gengetopt_args_info_description = "";
 const char *gengetopt_args_info_help[] = {
   "  -h, --help                    Print help and exit",
   "  -V, --version                 Print version and exit",
+  "  -t, --threads=INT             The number of threads for IP solver\n                                  (default=`1')",
   "      --train=parameter-file    Train the parameters from given data",
   "      --predict=parameter-file  Predict interactions",
   "  -c, --cross-validation=INT    Perform the n-fold cross validation\n                                  (default=`0')",
   "  -e, --eta=FLOAT               Initial step width for the subgradient\n                                  optimization  (default=`0.5')",
   "  -w, --pos-w=FLOAT             The weight for positive interactions\n                                  (default=`4')",
   "      --neg-w=FLOAT             The weight for negative interactions\n                                  (default=`1')",
-  "  -D, --discriminative=FLOAT    The weight for the regularization term of the\n                                  discriminative model  (default=`0.25')",
-  "  -G, --generative=FLOAT        The weight for the regularization term of the\n                                  generative models  (default=`1.0')",
+  "  -D, --reg-w=FLOAT             The weight for the L1 regularization term\n                                  (default=`0.125')",
+  "  -G, --semi-w=FLOAT            The weight for the graph regularization term\n                                  for semi-supervised learning  (default=`1.0')",
   "  -d, --d-max=INT               The maximim number of iterations of the\n                                  supervised learning  (default=`25')",
   "  -g, --g-max=INT               The maximum number of iterations of the\n                                  semi-supervised learning  (default=`5')",
   "      --aa-int-max=INT          The maximum number of interations of each amino\n                                  acid  (default=`3')",
   "      --rna-int-max=INT         The maximum number of interations of each\n                                  nucleotide  (default=`4')",
   "      --exceeding-penalty=FLOAT The penalty for exceeding the limit of the\n                                  number of interactions for each residue/base\n                                  (default=`0.5')",
-  "      --threshold=FLOAT         Specify the threshold for the generative\n                                  probability  (default=`0.001')",
     0
 };
 
@@ -77,26 +77,28 @@ void clear_given (struct gengetopt_args_info *args_info)
 {
   args_info->help_given = 0 ;
   args_info->version_given = 0 ;
+  args_info->threads_given = 0 ;
   args_info->train_given = 0 ;
   args_info->predict_given = 0 ;
   args_info->cross_validation_given = 0 ;
   args_info->eta_given = 0 ;
   args_info->pos_w_given = 0 ;
   args_info->neg_w_given = 0 ;
-  args_info->discriminative_given = 0 ;
-  args_info->generative_given = 0 ;
+  args_info->reg_w_given = 0 ;
+  args_info->semi_w_given = 0 ;
   args_info->d_max_given = 0 ;
   args_info->g_max_given = 0 ;
   args_info->aa_int_max_given = 0 ;
   args_info->rna_int_max_given = 0 ;
   args_info->exceeding_penalty_given = 0 ;
-  args_info->threshold_given = 0 ;
 }
 
 static
 void clear_args (struct gengetopt_args_info *args_info)
 {
   FIX_UNUSED (args_info);
+  args_info->threads_arg = 1;
+  args_info->threads_orig = NULL;
   args_info->train_arg = NULL;
   args_info->train_orig = NULL;
   args_info->predict_arg = NULL;
@@ -109,10 +111,10 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->pos_w_orig = NULL;
   args_info->neg_w_arg = 1;
   args_info->neg_w_orig = NULL;
-  args_info->discriminative_arg = 0.25;
-  args_info->discriminative_orig = NULL;
-  args_info->generative_arg = 1.0;
-  args_info->generative_orig = NULL;
+  args_info->reg_w_arg = 0.125;
+  args_info->reg_w_orig = NULL;
+  args_info->semi_w_arg = 1.0;
+  args_info->semi_w_orig = NULL;
   args_info->d_max_arg = 25;
   args_info->d_max_orig = NULL;
   args_info->g_max_arg = 5;
@@ -123,8 +125,6 @@ void clear_args (struct gengetopt_args_info *args_info)
   args_info->rna_int_max_orig = NULL;
   args_info->exceeding_penalty_arg = 0.5;
   args_info->exceeding_penalty_orig = NULL;
-  args_info->threshold_arg = 0.001;
-  args_info->threshold_orig = NULL;
   
 }
 
@@ -135,20 +135,20 @@ void init_args_info(struct gengetopt_args_info *args_info)
 
   args_info->help_help = gengetopt_args_info_help[0] ;
   args_info->version_help = gengetopt_args_info_help[1] ;
-  args_info->train_help = gengetopt_args_info_help[2] ;
-  args_info->predict_help = gengetopt_args_info_help[3] ;
-  args_info->cross_validation_help = gengetopt_args_info_help[4] ;
-  args_info->eta_help = gengetopt_args_info_help[5] ;
-  args_info->pos_w_help = gengetopt_args_info_help[6] ;
-  args_info->neg_w_help = gengetopt_args_info_help[7] ;
-  args_info->discriminative_help = gengetopt_args_info_help[8] ;
-  args_info->generative_help = gengetopt_args_info_help[9] ;
-  args_info->d_max_help = gengetopt_args_info_help[10] ;
-  args_info->g_max_help = gengetopt_args_info_help[11] ;
-  args_info->aa_int_max_help = gengetopt_args_info_help[12] ;
-  args_info->rna_int_max_help = gengetopt_args_info_help[13] ;
-  args_info->exceeding_penalty_help = gengetopt_args_info_help[14] ;
-  args_info->threshold_help = gengetopt_args_info_help[15] ;
+  args_info->threads_help = gengetopt_args_info_help[2] ;
+  args_info->train_help = gengetopt_args_info_help[3] ;
+  args_info->predict_help = gengetopt_args_info_help[4] ;
+  args_info->cross_validation_help = gengetopt_args_info_help[5] ;
+  args_info->eta_help = gengetopt_args_info_help[6] ;
+  args_info->pos_w_help = gengetopt_args_info_help[7] ;
+  args_info->neg_w_help = gengetopt_args_info_help[8] ;
+  args_info->reg_w_help = gengetopt_args_info_help[9] ;
+  args_info->semi_w_help = gengetopt_args_info_help[10] ;
+  args_info->d_max_help = gengetopt_args_info_help[11] ;
+  args_info->g_max_help = gengetopt_args_info_help[12] ;
+  args_info->aa_int_max_help = gengetopt_args_info_help[13] ;
+  args_info->rna_int_max_help = gengetopt_args_info_help[14] ;
+  args_info->exceeding_penalty_help = gengetopt_args_info_help[15] ;
   
 }
 
@@ -235,6 +235,7 @@ static void
 cmdline_parser_release (struct gengetopt_args_info *args_info)
 {
   unsigned int i;
+  free_string_field (&(args_info->threads_orig));
   free_string_field (&(args_info->train_arg));
   free_string_field (&(args_info->train_orig));
   free_string_field (&(args_info->predict_arg));
@@ -243,14 +244,13 @@ cmdline_parser_release (struct gengetopt_args_info *args_info)
   free_string_field (&(args_info->eta_orig));
   free_string_field (&(args_info->pos_w_orig));
   free_string_field (&(args_info->neg_w_orig));
-  free_string_field (&(args_info->discriminative_orig));
-  free_string_field (&(args_info->generative_orig));
+  free_string_field (&(args_info->reg_w_orig));
+  free_string_field (&(args_info->semi_w_orig));
   free_string_field (&(args_info->d_max_orig));
   free_string_field (&(args_info->g_max_orig));
   free_string_field (&(args_info->aa_int_max_orig));
   free_string_field (&(args_info->rna_int_max_orig));
   free_string_field (&(args_info->exceeding_penalty_orig));
-  free_string_field (&(args_info->threshold_orig));
   
   
   for (i = 0; i < args_info->inputs_num; ++i)
@@ -290,6 +290,8 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "help", 0, 0 );
   if (args_info->version_given)
     write_into_file(outfile, "version", 0, 0 );
+  if (args_info->threads_given)
+    write_into_file(outfile, "threads", args_info->threads_orig, 0);
   if (args_info->train_given)
     write_into_file(outfile, "train", args_info->train_orig, 0);
   if (args_info->predict_given)
@@ -302,10 +304,10 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "pos-w", args_info->pos_w_orig, 0);
   if (args_info->neg_w_given)
     write_into_file(outfile, "neg-w", args_info->neg_w_orig, 0);
-  if (args_info->discriminative_given)
-    write_into_file(outfile, "discriminative", args_info->discriminative_orig, 0);
-  if (args_info->generative_given)
-    write_into_file(outfile, "generative", args_info->generative_orig, 0);
+  if (args_info->reg_w_given)
+    write_into_file(outfile, "reg-w", args_info->reg_w_orig, 0);
+  if (args_info->semi_w_given)
+    write_into_file(outfile, "semi-w", args_info->semi_w_orig, 0);
   if (args_info->d_max_given)
     write_into_file(outfile, "d-max", args_info->d_max_orig, 0);
   if (args_info->g_max_given)
@@ -316,8 +318,6 @@ cmdline_parser_dump(FILE *outfile, struct gengetopt_args_info *args_info)
     write_into_file(outfile, "rna-int-max", args_info->rna_int_max_orig, 0);
   if (args_info->exceeding_penalty_given)
     write_into_file(outfile, "exceeding-penalty", args_info->exceeding_penalty_orig, 0);
-  if (args_info->threshold_given)
-    write_into_file(outfile, "threshold", args_info->threshold_orig, 0);
   
 
   i = EXIT_SUCCESS;
@@ -574,24 +574,24 @@ cmdline_parser_internal (
       static struct option long_options[] = {
         { "help",	0, NULL, 'h' },
         { "version",	0, NULL, 'V' },
+        { "threads",	1, NULL, 't' },
         { "train",	1, NULL, 0 },
         { "predict",	1, NULL, 0 },
         { "cross-validation",	1, NULL, 'c' },
         { "eta",	1, NULL, 'e' },
         { "pos-w",	1, NULL, 'w' },
         { "neg-w",	1, NULL, 0 },
-        { "discriminative",	1, NULL, 'D' },
-        { "generative",	1, NULL, 'G' },
+        { "reg-w",	1, NULL, 'D' },
+        { "semi-w",	1, NULL, 'G' },
         { "d-max",	1, NULL, 'd' },
         { "g-max",	1, NULL, 'g' },
         { "aa-int-max",	1, NULL, 0 },
         { "rna-int-max",	1, NULL, 0 },
         { "exceeding-penalty",	1, NULL, 0 },
-        { "threshold",	1, NULL, 0 },
         { 0,  0, 0, 0 }
       };
 
-      c = getopt_long (argc, argv, "hVc:e:w:D:G:d:g:", long_options, &option_index);
+      c = getopt_long (argc, argv, "hVt:c:e:w:D:G:d:g:", long_options, &option_index);
 
       if (c == -1) break;	/* Exit from `while (1)' loop.  */
 
@@ -607,6 +607,18 @@ cmdline_parser_internal (
           cmdline_parser_free (&local_args_info);
           exit (EXIT_SUCCESS);
 
+        case 't':	/* The number of threads for IP solver.  */
+        
+        
+          if (update_arg( (void *)&(args_info->threads_arg), 
+               &(args_info->threads_orig), &(args_info->threads_given),
+              &(local_args_info.threads_given), optarg, 0, "1", ARG_INT,
+              check_ambiguity, override, 0, 0,
+              "threads", 't',
+              additional_error))
+            goto failure;
+        
+          break;
         case 'c':	/* Perform the n-fold cross validation.  */
         
         
@@ -643,26 +655,26 @@ cmdline_parser_internal (
             goto failure;
         
           break;
-        case 'D':	/* The weight for the regularization term of the discriminative model.  */
+        case 'D':	/* The weight for the L1 regularization term.  */
         
         
-          if (update_arg( (void *)&(args_info->discriminative_arg), 
-               &(args_info->discriminative_orig), &(args_info->discriminative_given),
-              &(local_args_info.discriminative_given), optarg, 0, "0.25", ARG_FLOAT,
+          if (update_arg( (void *)&(args_info->reg_w_arg), 
+               &(args_info->reg_w_orig), &(args_info->reg_w_given),
+              &(local_args_info.reg_w_given), optarg, 0, "0.125", ARG_FLOAT,
               check_ambiguity, override, 0, 0,
-              "discriminative", 'D',
+              "reg-w", 'D',
               additional_error))
             goto failure;
         
           break;
-        case 'G':	/* The weight for the regularization term of the generative models.  */
+        case 'G':	/* The weight for the graph regularization term for semi-supervised learning.  */
         
         
-          if (update_arg( (void *)&(args_info->generative_arg), 
-               &(args_info->generative_orig), &(args_info->generative_given),
-              &(local_args_info.generative_given), optarg, 0, "1.0", ARG_FLOAT,
+          if (update_arg( (void *)&(args_info->semi_w_arg), 
+               &(args_info->semi_w_orig), &(args_info->semi_w_given),
+              &(local_args_info.semi_w_given), optarg, 0, "1.0", ARG_FLOAT,
               check_ambiguity, override, 0, 0,
-              "generative", 'G',
+              "semi-w", 'G',
               additional_error))
             goto failure;
         
@@ -773,20 +785,6 @@ cmdline_parser_internal (
                 &(local_args_info.exceeding_penalty_given), optarg, 0, "0.5", ARG_FLOAT,
                 check_ambiguity, override, 0, 0,
                 "exceeding-penalty", '-',
-                additional_error))
-              goto failure;
-          
-          }
-          /* Specify the threshold for the generative probability.  */
-          else if (strcmp (long_options[option_index].name, "threshold") == 0)
-          {
-          
-          
-            if (update_arg( (void *)&(args_info->threshold_arg), 
-                 &(args_info->threshold_orig), &(args_info->threshold_given),
-                &(local_args_info.threshold_given), optarg, 0, "0.001", ARG_FLOAT,
-                check_ambiguity, override, 0, 0,
-                "threshold", '-',
                 additional_error))
               goto failure;
           
