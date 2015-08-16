@@ -39,6 +39,9 @@ struct gengetopt_args_info
 {
   const char *help_help; /**< @brief Print help and exit help description.  */
   const char *version_help; /**< @brief Print version and exit help description.  */
+  int threads_arg;	/**< @brief The number of threads for IP solver (default='1').  */
+  char * threads_orig;	/**< @brief The number of threads for IP solver original value given at command line.  */
+  const char *threads_help; /**< @brief The number of threads for IP solver help description.  */
   char * train_arg;	/**< @brief Train the parameters from given data.  */
   char * train_orig;	/**< @brief Train the parameters from given data original value given at command line.  */
   const char *train_help; /**< @brief Train the parameters from given data help description.  */
@@ -57,12 +60,12 @@ struct gengetopt_args_info
   float neg_w_arg;	/**< @brief The weight for negative interactions (default='1').  */
   char * neg_w_orig;	/**< @brief The weight for negative interactions original value given at command line.  */
   const char *neg_w_help; /**< @brief The weight for negative interactions help description.  */
-  float discriminative_arg;	/**< @brief The weight for the regularization term of the discriminative model (default='0.25').  */
-  char * discriminative_orig;	/**< @brief The weight for the regularization term of the discriminative model original value given at command line.  */
-  const char *discriminative_help; /**< @brief The weight for the regularization term of the discriminative model help description.  */
-  float generative_arg;	/**< @brief The weight for the regularization term of the generative models (default='1.0').  */
-  char * generative_orig;	/**< @brief The weight for the regularization term of the generative models original value given at command line.  */
-  const char *generative_help; /**< @brief The weight for the regularization term of the generative models help description.  */
+  float reg_w_arg;	/**< @brief The weight for the L1 regularization term (default='0.125').  */
+  char * reg_w_orig;	/**< @brief The weight for the L1 regularization term original value given at command line.  */
+  const char *reg_w_help; /**< @brief The weight for the L1 regularization term help description.  */
+  float semi_w_arg;	/**< @brief The weight for the graph regularization term for semi-supervised learning (default='1.0').  */
+  char * semi_w_orig;	/**< @brief The weight for the graph regularization term for semi-supervised learning original value given at command line.  */
+  const char *semi_w_help; /**< @brief The weight for the graph regularization term for semi-supervised learning help description.  */
   int d_max_arg;	/**< @brief The maximim number of iterations of the supervised learning (default='25').  */
   char * d_max_orig;	/**< @brief The maximim number of iterations of the supervised learning original value given at command line.  */
   const char *d_max_help; /**< @brief The maximim number of iterations of the supervised learning help description.  */
@@ -78,26 +81,23 @@ struct gengetopt_args_info
   float exceeding_penalty_arg;	/**< @brief The penalty for exceeding the limit of the number of interactions for each residue/base (default='0.5').  */
   char * exceeding_penalty_orig;	/**< @brief The penalty for exceeding the limit of the number of interactions for each residue/base original value given at command line.  */
   const char *exceeding_penalty_help; /**< @brief The penalty for exceeding the limit of the number of interactions for each residue/base help description.  */
-  float threshold_arg;	/**< @brief Specify the threshold for the generative probability (default='0.001').  */
-  char * threshold_orig;	/**< @brief Specify the threshold for the generative probability original value given at command line.  */
-  const char *threshold_help; /**< @brief Specify the threshold for the generative probability help description.  */
   
   unsigned int help_given ;	/**< @brief Whether help was given.  */
   unsigned int version_given ;	/**< @brief Whether version was given.  */
+  unsigned int threads_given ;	/**< @brief Whether threads was given.  */
   unsigned int train_given ;	/**< @brief Whether train was given.  */
   unsigned int predict_given ;	/**< @brief Whether predict was given.  */
   unsigned int cross_validation_given ;	/**< @brief Whether cross-validation was given.  */
   unsigned int eta_given ;	/**< @brief Whether eta was given.  */
   unsigned int pos_w_given ;	/**< @brief Whether pos-w was given.  */
   unsigned int neg_w_given ;	/**< @brief Whether neg-w was given.  */
-  unsigned int discriminative_given ;	/**< @brief Whether discriminative was given.  */
-  unsigned int generative_given ;	/**< @brief Whether generative was given.  */
+  unsigned int reg_w_given ;	/**< @brief Whether reg-w was given.  */
+  unsigned int semi_w_given ;	/**< @brief Whether semi-w was given.  */
   unsigned int d_max_given ;	/**< @brief Whether d-max was given.  */
   unsigned int g_max_given ;	/**< @brief Whether g-max was given.  */
   unsigned int aa_int_max_given ;	/**< @brief Whether aa-int-max was given.  */
   unsigned int rna_int_max_given ;	/**< @brief Whether rna-int-max was given.  */
   unsigned int exceeding_penalty_given ;	/**< @brief Whether exceeding-penalty was given.  */
-  unsigned int threshold_given ;	/**< @brief Whether threshold was given.  */
 
   char **inputs ; /**< @brief unamed options (options without names) */
   unsigned inputs_num ; /**< @brief unamed options number */
