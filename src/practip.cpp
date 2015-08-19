@@ -182,9 +182,9 @@ load_unlabeled_data(const std::string& filename)
   std::ifstream is(filename.c_str());
   std::cout << "loading unlabeled data" << std::endl;
   while (is >> aa_seq1 >> rna_seq1 >> aa_seq2 >> rna_seq2 >> aa_al >> aa_sc >> rna_al >> rna_sc) {
-    std::cout << aa_seq1 << " " << rna_seq1 
-              << aa_seq2 << " " << rna_seq2
-              << aa_al << " " << aa_sc 
+    std::cout << aa_seq1 << " " << rna_seq1 << " " 
+              << aa_seq2 << " " << rna_seq2 << " " 
+              << aa_al << " " << aa_sc << " " 
               << rna_al << " " << rna_sc << std::endl;
 
     unlabeled_aa_.push_back(Alignment<AA>(aa_al.c_str(), aa_sc.c_str()));
@@ -220,7 +220,7 @@ calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight
 
 float
 PRactIP::
-supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin /*=true*/)
+supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin /*=true*/, float w /*=1.0*/)
 {
   float loss=0.0;
   VVF int_weight;
@@ -232,7 +232,7 @@ supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool m
   VVU predicted_int;
   predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
   loss += calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
-#if 0
+#if 1
   for (uint i=0; i!=correct_int.size(); ++i) {
     if (!correct_int[i].empty() || !predicted_int[i].empty())
     {
@@ -247,7 +247,7 @@ supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool m
   }
   std::cout << std::endl;
 #endif  
-  update_feature_weight(aa, rna, predicted_int, correct_int);
+  update_feature_weight(aa, rna, predicted_int, correct_int, w);
 
   return loss;
 }
@@ -339,29 +339,40 @@ semisupervised_training(const VU& use_idx)
   // semisupervised learning
   if (unlabeled_aa_.size()>0)
   {
-    for (uint u=0; u!=g_max_; ++u) {
+    idx.resize(use_idx.size()+unlabeled_aa_.size());
+    for (uint i=0; i!=idx.size(); ++i)
+      idx[i] = i<use_idx.size() ? use_idx[i] : i-use_idx.size()+labeled_aa_.size();
+
+    for (uint u=0; u!=g_max_; ++u)
+    {
+      std::random_shuffle(idx.begin(), idx.end());
+
       float unlabeled_loss=0.0;
-      for (uint i=0; i!=unlabeled_aa_.size(); ++i)
+      float total_loss=0.0;
+      for (auto i : idx)
       {
-        // common structure prediction
-        VVVU common_int;
-        predict_common_interaction(unlabeled_aa_[i], unlabeled_rna_[i], common_int);
-        assert(common_int.size()==aa[i].num_sequences());
-        assert(common_int.size()==rna[i].num_sequences());
-        // train from predicted common structures
-        for (uint k=0; k!=common_int.size(); ++k)
+        if (i<labeled_aa_.size()) // labeled data
         {
-          unlabeled_loss += supervised_training(unlabeled_aa_[i].seq(k), unlabeled_rna_[i].seq(k), common_int[k], false);
+          std::cout << ">> supervised" << std::endl;
+          total_loss += supervised_training(labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
           epoch++;
         }
-      }
-
-      // train from labled data
-      float total_loss=0.0;
-      std::random_shuffle(idx.begin(), idx.end());
-      for (auto i : idx) {
-        total_loss += supervised_training(labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
-        epoch++;
+        else                    // unlabeled data
+        {
+          const auto iu=i-labeled_aa_.size();
+          // common structure prediction
+          VVVU common_int;
+          predict_common_interaction(unlabeled_aa_[iu], unlabeled_rna_[iu], common_int);
+          assert(common_int.size()==unlabeled_aa_[iu].num_sequences());
+          assert(common_int.size()==unlabeled_rna_[iu].num_sequences());
+          // train from predicted common structures
+          for (uint k=0; k!=common_int.size(); ++k)
+          {
+          std::cout << ">> semi-supervised" << std::endl;
+            unlabeled_loss += supervised_training(unlabeled_aa_[iu].seq(k), unlabeled_rna_[iu].seq(k), common_int[k], false, mu_);
+            epoch++;
+          }
+        }
       }
     }
   }
@@ -371,12 +382,12 @@ semisupervised_training(const VU& use_idx)
 
 float
 PRactIP::
-predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int)
+predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int, float w /*=1.0*/)
 {
   VVF int_weight;
   VF aa_weight, rna_weight;
   calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
-  return predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
+  return predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int, w);
 }
 
 void
@@ -609,7 +620,7 @@ typedef std::unordered_map<std::string,int> GM;
 
 void
 PRactIP::
-update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int)
+update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int, float w /*=1.0*/)
 {
   assert(predicted_int.size()==correct_int.size());
 
@@ -701,8 +712,8 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
       if (e.second!=0)
       {
         auto fe = feature_weight_[k].insert(std::make_pair(e.first, PRactIP::FeatureWeight())).first;
-        fe->second.weight -= e.second * eta0_/std::sqrt(1.0+fe->second.sum_of_grad2);
-        fe->second.sum_of_grad2 += e.second*e.second;
+        fe->second.weight -= w*e.second * eta0_/std::sqrt(1.0+fe->second.sum_of_grad2);
+        fe->second.sum_of_grad2 += w*e.second * w*e.second;
 #if 0
         std::cerr << epoch << ", "
                   << k << ", "
@@ -774,7 +785,7 @@ void
 PRactIP::
 predict_interaction_object(const AA& aa, const RNA& rna,
                            const VVF& int_weight, const VF& aa_weight, const VF& rna_weight,
-                           VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip) const
+                           VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip, float w /*=1.0*/) const
 {
   const uint aa_len = x.size();
   const uint rna_len = y.size();
@@ -782,18 +793,18 @@ predict_interaction_object(const AA& aa, const RNA& rna,
 
   for (uint i=0; i!=aa_len; ++i)
     if (aa_weight[i]>0.0) {
-      x[i] = ip.make_variable(aa_weight[i]);
+      x[i] = ip.make_variable(w*aa_weight[i]);
       sl_x[i] = ip.make_variable(-exceed_penalty_, 0, MAX_INTERACTION);
     }
   for (uint j=0; j!=rna_len; ++j)
     if (rna_weight[j]>0.0) {
-      y[j] = ip.make_variable(rna_weight[j]);
+      y[j] = ip.make_variable(w*rna_weight[j]);
       sl_y[j] = ip.make_variable(-exceed_penalty_, 0, MAX_INTERACTION);
     }
   for (uint i=0; i!=aa_len; ++i)
     for (uint j=0; j!=rna_len; ++j)
       if (int_weight[i][j]>0.0)
-        z[i][j] = ip.make_variable(int_weight[i][j]);
+        z[i][j] = ip.make_variable(w*int_weight[i][j]);
 }
 
 void
@@ -877,7 +888,7 @@ predict_interaction_constraints(const AA& aa, const RNA& rna,
 float
 PRactIP::
 predict_interaction(const AA& aa, const RNA& rna,
-                    const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const
+                    const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p, float w /*=1.0*/) const
 {
   const uint aa_len = int_weight.size();
   const uint rna_len = int_weight[0].size();
@@ -890,7 +901,7 @@ predict_interaction(const AA& aa, const RNA& rna,
   VI sl_x(aa_len, -1);            // slack variables for AA to relax some constraints
   VI sl_y(rna_len, -1);           // slack variables for RNA to relax some constraints
 
-  predict_interaction_object(aa, rna, int_weight, aa_weight, rna_weight, x, y, z, sl_x, sl_y, ip);
+  predict_interaction_object(aa, rna, int_weight, aa_weight, rna_weight, x, y, z, sl_x, sl_y, ip, w);
   ip.update();
   predict_interaction_constraints(aa, rna, x, y, z, sl_x, sl_y, ip);
   float s = ip.solve();
@@ -943,7 +954,7 @@ predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna,
     sl_x[k].resize(aa_len, -1);
     sl_y[k].resize(rna_len, -1);
 
-    predict_interaction_object(aa.seq(k), rna.seq(k), int_weight[k], aa_weight[k], rna_weight[k], x[k], y[k], z[k], sl_x[k], sl_y[k], ip);
+    predict_interaction_object(aa.seq(k), rna.seq(k), int_weight[k], aa_weight[k], rna_weight[k], x[k], y[k], z[k], sl_x[k], sl_y[k], ip, mu_);
   }
 
   VVI x_al(n_seq*(n_seq-1)/2, VI(aa.num_columns(), -1));
@@ -961,19 +972,19 @@ predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna,
         if (aa.q_score()[i]>0.0 && 
             aa_k[i]!=-1u && x[k][aa_k[i]]>=0 && 
             aa_l[i]!=-1u && x[l][aa_l[i]]>=0)
-          x_al[m][i] = ip.make_variable(-aa.q_score()[i]);
+          x_al[m][i] = ip.make_variable(-nu_*aa.q_score()[i]);
       for (uint j=0; j!=rna.num_columns(); ++j)
         if (rna.q_score()[j]>0.0 &&
             rna_k[j]!=-1u && y[k][rna_k[j]]>=0 &&
             rna_l[j]!=-1u && y[l][rna_l[j]]>=0)
-          y_al[m][j] = ip.make_variable(-rna.q_score()[j]);
+          y_al[m][j] = ip.make_variable(-nu_*rna.q_score()[j]);
       for (uint i=0; i!=aa.num_columns(); ++i)
         if (aa.q_score()[i]>0.0 && aa_k[i]!=-1u && aa_l[i]!=-1u)
           for (uint j=0; j!=rna.num_columns(); ++j)
             if (rna.q_score()[j]>0.0 && 
                 rna_k[j]!=-1u && z[k][aa_k[i]][rna_k[j]]>=0 && 
                 rna_l[j]!=-1u && z[l][aa_l[i]][rna_l[j]]>=0)
-              z_al[m][i][j] = ip.make_variable(-(aa.q_score()[i]+rna.q_score()[j])/2);
+              z_al[m][i][j] = ip.make_variable(-nu_*(aa.q_score()[i]+rna.q_score()[j])/2);
     }
   }
   ip.update();
@@ -1446,8 +1457,9 @@ parse_options(int& argc, char**& argv)
   }
   pos_w_ = args_info.pos_w_arg;
   neg_w_ = args_info.neg_w_arg;
-  lambda_ = args_info.reg_w_arg;
-  mu_ = args_info.semi_w_arg;
+  lambda_ = args_info.lambda_arg;
+  mu_ = args_info.mu_arg;
+  nu_ = args_info.nu_arg;
   eta0_ = args_info.eta_arg;
   d_max_ = args_info.d_max_arg;
   g_max_ = args_info.g_max_arg;
