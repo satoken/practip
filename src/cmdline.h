@@ -60,12 +60,15 @@ struct gengetopt_args_info
   float neg_w_arg;	/**< @brief The weight for negative interactions (default='1').  */
   char * neg_w_orig;	/**< @brief The weight for negative interactions original value given at command line.  */
   const char *neg_w_help; /**< @brief The weight for negative interactions help description.  */
-  float reg_w_arg;	/**< @brief The weight for the L1 regularization term (default='0.125').  */
-  char * reg_w_orig;	/**< @brief The weight for the L1 regularization term original value given at command line.  */
-  const char *reg_w_help; /**< @brief The weight for the L1 regularization term help description.  */
-  float semi_w_arg;	/**< @brief The weight for the graph regularization term for semi-supervised learning (default='1.0').  */
-  char * semi_w_orig;	/**< @brief The weight for the graph regularization term for semi-supervised learning original value given at command line.  */
-  const char *semi_w_help; /**< @brief The weight for the graph regularization term for semi-supervised learning help description.  */
+  float lambda_arg;	/**< @brief The weight for the L1 regularization term (default='0.125').  */
+  char * lambda_orig;	/**< @brief The weight for the L1 regularization term original value given at command line.  */
+  const char *lambda_help; /**< @brief The weight for the L1 regularization term help description.  */
+  float mu_arg;	/**< @brief The weight for semi-supervised objective (default='0.5').  */
+  char * mu_orig;	/**< @brief The weight for semi-supervised objective original value given at command line.  */
+  const char *mu_help; /**< @brief The weight for semi-supervised objective help description.  */
+  float nu_arg;	/**< @brief The weight for the graph regularization term for semi-supervised learning (default='1.0').  */
+  char * nu_orig;	/**< @brief The weight for the graph regularization term for semi-supervised learning original value given at command line.  */
+  const char *nu_help; /**< @brief The weight for the graph regularization term for semi-supervised learning help description.  */
   int d_max_arg;	/**< @brief The maximim number of iterations of the supervised learning (default='25').  */
   char * d_max_orig;	/**< @brief The maximim number of iterations of the supervised learning original value given at command line.  */
   const char *d_max_help; /**< @brief The maximim number of iterations of the supervised learning help description.  */
@@ -91,8 +94,9 @@ struct gengetopt_args_info
   unsigned int eta_given ;	/**< @brief Whether eta was given.  */
   unsigned int pos_w_given ;	/**< @brief Whether pos-w was given.  */
   unsigned int neg_w_given ;	/**< @brief Whether neg-w was given.  */
-  unsigned int reg_w_given ;	/**< @brief Whether reg-w was given.  */
-  unsigned int semi_w_given ;	/**< @brief Whether semi-w was given.  */
+  unsigned int lambda_given ;	/**< @brief Whether lambda was given.  */
+  unsigned int mu_given ;	/**< @brief Whether mu was given.  */
+  unsigned int nu_given ;	/**< @brief Whether nu was given.  */
   unsigned int d_max_given ;	/**< @brief Whether d-max was given.  */
   unsigned int g_max_given ;	/**< @brief Whether g-max was given.  */
   unsigned int aa_int_max_given ;	/**< @brief Whether aa-int-max was given.  */

@@ -22,9 +22,11 @@ option "pos-w"		      w "The weight for positive interactions"
        			        float default="4" optional
 option "neg-w"		      - "The weight for negative interactions"
        			        float default="1" optional
-option "reg-w"		      D "The weight for the L1 regularization term"
+option "lambda"		      D "The weight for the L1 regularization term"
        			      	float default="0.125" optional
-option "semi-w"	              G "The weight for the graph regularization term for semi-supervised learning"
+option "mu"	              - "The weight for semi-supervised objective"
+       			      	float default="0.5" optional
+option "nu"		      - "The weight for the graph regularization term for semi-supervised learning"
        			      	float default="1.0" optional
 option "d-max"		      d "The maximim number of iterations of the supervised learning"
        			      	int default="25" optional

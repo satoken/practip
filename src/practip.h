@@ -128,7 +128,7 @@ private:
 
   void supervised_training() { semisupervised_training(); }
   void supervised_training(const VU& use_idx) { semisupervised_training(use_idx); }
-  float supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin=true);
+  float supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin=true, float w=1.0);
   void semisupervised_training();
   void semisupervised_training(const VU& use_idx);
 
@@ -142,16 +142,16 @@ private:
   void read_correct_interaction(const std::string& filename, VVU& correct_int) const; 
   void calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight);
   void penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const;
-  void update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int);
+  void update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int, float w=1.0);
 
   float update_fobos(uint fgroup, const char* fname);
   float regularization_fobos();
 
-  float predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int);
-  float predict_interaction(const AA& aa, const RNA& rna, const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const;
+  float predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int, float w=1.0);
+  float predict_interaction(const AA& aa, const RNA& rna, const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p, float w=1.0) const;
   void predict_interaction_object(const AA& aa, const RNA& rna,
                                   const VVF& int_weight, const VF& aa_weight, const VF& rna_weight,
-                                  VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip) const;
+                                  VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip, float w=1.0) const;
   void predict_interaction_constraints(const AA& aa, const RNA& rna,
                                        const VI& x, const VI& y, const VVI& z, const VI& sl_x, const VI& sl_y, 
                                        IP& ip) const;
@@ -179,6 +179,7 @@ private:
   float neg_w_;
   float lambda_;
   float mu_;
+  float nu_;
   float eta0_;
   float exceed_penalty_;
   uint n_th_;
