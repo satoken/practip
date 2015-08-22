@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <stack>
 #include <functional>
+#include <numeric>
 #include <getopt.h>
 #include <cstring>
 #include <cstdlib>
@@ -232,7 +233,7 @@ supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool m
   VVU predicted_int;
   predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
   loss += calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
-#if 1
+#if 0
   for (uint i=0; i!=correct_int.size(); ++i) {
     if (!correct_int[i].empty() || !predicted_int[i].empty())
     {
@@ -317,7 +318,7 @@ PRactIP::
 semisupervised_training()
 {
   VU idx(labeled_aa_.size());
-  for (uint i=0; i!=idx.size(); ++i) idx[i]=i;
+  std::iota(std::begin(idx), std::end(idx), 0);
   semisupervised_training(idx);
 }
 
@@ -325,11 +326,12 @@ void
 PRactIP::
 semisupervised_training(const VU& use_idx)
 {
+  epoch=0;
   // initial supervised learning
   VU idx(use_idx);
   for (uint t=0; t!=d_max_; ++t) {
     float total_loss=0.0;
-    std::random_shuffle(idx.begin(), idx.end()); // shuffle the order of training data
+    std::random_shuffle(std::begin(idx), std::end(idx)); // shuffle the order of training data
     for (auto i : idx) {
       total_loss += supervised_training(labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
       epoch++;
@@ -353,7 +355,7 @@ semisupervised_training(const VU& use_idx)
       {
         if (i<labeled_aa_.size()) // labeled data
         {
-          std::cout << ">> supervised" << std::endl;
+          //std::cout << ">> supervised" << std::endl;
           total_loss += supervised_training(labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
           epoch++;
         }
@@ -368,7 +370,7 @@ semisupervised_training(const VU& use_idx)
           // train from predicted common structures
           for (uint k=0; k!=common_int.size(); ++k)
           {
-          std::cout << ">> semi-supervised" << std::endl;
+            //std::cout << ">> semi-supervised" << std::endl;
             unlabeled_loss += supervised_training(unlabeled_aa_[iu].seq(k), unlabeled_rna_[iu].seq(k), common_int[k], false, mu_);
             epoch++;
           }
@@ -616,8 +618,6 @@ penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, con
       rna_weight[j] -= pos_w_+neg_w_;
 }
 
-typedef std::unordered_map<std::string,int> GM;
-
 void
 PRactIP::
 update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int, float w /*=1.0*/)
@@ -658,10 +658,10 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
     if (rna_has_int[j])
     {
       extract_rna_feature(rna, j, 
-                         [&] (uint fgroup, const char* fname, uint j)
-                         {
-                           gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
-                         }
+                          [&] (uint fgroup, const char* fname, uint j)
+                          {
+                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
+                          }
         );
     }
 
@@ -697,10 +697,10 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
     if (rna_has_int[j])
     {
       extract_rna_feature(rna, j, 
-                         [&] (uint fgroup, const char* fname, uint j)
-                         {
-                           gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
-                         }
+                          [&] (uint fgroup, const char* fname, uint j)
+                          {
+                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
+                          }
         );
     }
 
