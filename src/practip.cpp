@@ -984,7 +984,7 @@ predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna,
             if (rna.q_score()[j]>0.0 && 
                 rna_k[j]!=-1u && z[k][aa_k[i]][rna_k[j]]>=0 && 
                 rna_l[j]!=-1u && z[l][aa_l[i]][rna_l[j]]>=0)
-              z_al[m][i][j] = ip.make_variable(-nu_*(aa.q_score()[i]+rna.q_score()[j])/2);
+              z_al[m][i][j] = ip.make_variable(-nu_*aa.q_score()[i]*rna.q_score()[j]);
     }
   }
   ip.update();
