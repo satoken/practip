@@ -525,7 +525,7 @@ PRactIP::
 store_parameters(const char* filename) const
 {
   std::ofstream os(filename);
-  if (!os) throw static_cast<const char*>(strerror(errno));
+  if (!os) throw std::runtime_error(std::string(strerror(errno)) + ": " + filename);
 
   for (uint k=0; k!=feature_weight_.size(); ++k)
   {
@@ -536,6 +536,38 @@ store_parameters(const char* filename) const
         os << e.first << " " << e.second.weight << std::endl;
     }
     os << std::endl;
+  }
+}
+
+void
+PRactIP::
+restore_parameters(const char* filename)
+{
+  std::ifstream is(filename);
+  if (!is) throw std::runtime_error(std::string(strerror(errno)) + ": " + filename);
+
+  for (auto f : feature_weight_)
+    f.clear();
+
+  uint k=-1u;
+  std::string first, second;
+  while (is >> first >> second)
+  {
+    if (first=="[")             // group name
+    {
+      //std::cout << second << std::endl;
+      std::string temp1, temp2;
+      is >> temp1 >> temp1;
+      auto p = std::find(std::begin(groupname), std::end(groupname), second);
+      if (p!=std::end(groupname))
+        k = p - std::begin(groupname);
+      else
+        throw std::runtime_error(std::string("unknown groupname: ") + second);
+    }
+    else if (k!=-1u)
+    {
+      feature_weight_[k][first].weight = std::atof(second.c_str());
+    }
   }
 }
 
@@ -1501,6 +1533,7 @@ run()
       supervised_training();
     store_parameters(param_file_.c_str());
   } else {
+    restore_parameters(param_file_.c_str());
     assert(!"not implemented yet");
   }
   return 0;
