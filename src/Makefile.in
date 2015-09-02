@@ -265,7 +265,7 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-practip_SOURCES = practip.cpp practip.h cmdline.c cmdline.h ip.cpp ip.h typedef.h
+practip_SOURCES = practip.cpp practip.h cmdline.c cmdline.h ip.cpp ip.h typedef.h defparam.dat
 all: all-am
 
 .SUFFIXES:

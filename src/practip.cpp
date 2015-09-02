@@ -573,6 +573,34 @@ restore_parameters(const char* filename)
 
 void
 PRactIP::
+default_parameters()
+{
+  struct { const char* name; float value; } params[] = {
+#include "defparam.dat"
+  };
+
+  for (auto f : feature_weight_)
+    f.clear();
+
+  uint k=-1u;
+  for (const auto& x : params) {
+    if (x.value==0.0)
+    {
+      auto p = std::find(std::begin(groupname), std::end(groupname), x.name);
+      if (p!=std::end(groupname))
+        k = p - std::begin(groupname);
+      else
+        throw std::runtime_error(std::string("unknown groupname: ") + x.name);
+    }
+    else if (k!=-1u)
+    {
+      feature_weight_[k][x.name].weight = x.value;
+    }
+  }
+}
+
+void
+PRactIP::
 calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight)
 {
   int_weight.resize(aa.seq.size());
@@ -1103,23 +1131,59 @@ predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna,
   return s;
 }
 
+void
+PRactIP::
+show_result(const AA& aa, const RNA& rna, const VVU& predicted_int, float score) const
+{
+#if 0
+  std::cout << ">" << aa.name << std::endl
+            << aa.seq << std::endl;
+  for (uint i=0; i!=aa.seq.size(); ++i)
+    std::cout << i%10;
+  std::cout << std::endl;
+  
+  std::cout << ">" << rna.name << std::endl
+            << rna.seq << std::endl;
+  for (uint i=0; i!=rna.seq.size(); ++i)
+    std::cout << i%10;
+  std::cout << std::endl;
+#endif
+
+  std::cout << ">Score=" << score << std::endl;
+  for (uint i=0; i!=predicted_int.size(); ++i)
+    for (auto j : predicted_int[i])
+      std::cout << i << " " << j << std::endl;
+}
+
 int
 PRactIP::AA::
 read(const std::string& filename)
 {
   char line[BUFSIZ];
-  FILE* fp = fopen((filename+".seq").c_str(), "r");
+  std::string basename;
+  FILE* fp = fopen(filename.c_str(), "r");
+  if (fp==NULL) {
+    basename=filename;
+    fp = fopen((filename+".seq").c_str(), "r");
+  } else {
+    basename=filename.substr(0, filename.find_last_of('.'));
+  }
+  if (fp==NULL)
+    throw std::runtime_error(std::string(strerror(errno)) + ": " + filename);
+
   while (fgets(line, sizeof(line), fp)) {
+    char* nr = strchr(line, '\n');
+    if (nr) *nr='\0';
     if (line[0]!='>') {
-      char* nr = strchr(line, '\n');
-      if (nr) *nr='\0';
       this->seq+=line;
+    } else {
+      this->name=&line[1];
     }
   }
   fclose(fp);
 
 #if 0
-  fp = fopen((filename+".2nd").c_str(), "r");
+  fp = fopen((basename+".2nd").c_str(), "r");
   while (fgets(line, sizeof(line), fp)) {
     for (uint i=0; line[i]!='\0'; ++i) {
       switch (line[i]) {
@@ -1132,7 +1196,7 @@ read(const std::string& filename)
     this->ss += line;
   }
 #else
-  fp = fopen((filename+".ss2").c_str(), "r");
+  fp = fopen((basename+".ss2").c_str(), "r");
   while (fgets(line, sizeof(line), fp)) {
     if (line[0]=='\n' || line[0]=='#') continue;
     switch (line[7]) {
@@ -1186,18 +1250,29 @@ PRactIP::RNA::
 read(const std::string& filename) 
 {
   char line[BUFSIZ];
+  std::string basename;
   FILE* fp = fopen(filename.c_str(), "r");
+  if (fp==NULL) {
+    basename=filename;
+    fp = fopen((filename+".seq").c_str(), "r");
+  } else {
+    basename=filename.substr(0, filename.find_last_of('.'));
+  }
+  if (fp==NULL)
+    throw std::runtime_error(std::string(strerror(errno)) + ": " + filename);
+
   while (fgets(line, sizeof(line), fp)) {
+    char* nr = strchr(line, '\n');
+    if (nr) *nr='\0';
     if (line[0]!='>') {
-      char* nr = strchr(line, '\n');
-      if (nr) *nr='\0';
       this->seq+=line;
+    } else {
+      this->name=&line[1];
     }
   }
   fclose(fp);
 
-  std::string ss_file = filename.substr(0, filename.find_last_of('.'))+".ss";
-  fp = fopen(ss_file.c_str(), "r");
+  fp = fopen((basename+".ss").c_str(), "r");
   if (fp==NULL) {
     const char* prog=getenv("CENTROID_FOLD");
     if (!prog) prog="centroid_fold";
@@ -1511,12 +1586,12 @@ parse_options(int& argc, char**& argv)
     exit(1);
   }
 
-  if (args_info.inputs_num>0)
-    load_labeled_data(args_info.inputs[0]);
-  if (args_info.inputs_num>1)
-    load_unlabeled_data(args_info.inputs[1]);
+  args_.resize(args_info.inputs_num);
+  for (uint i=0; i!=args_info.inputs_num; ++i)
+    args_[i]=args_info.inputs[i];
 
   cmdline_parser_free(&args_info);
+
   return *this;
 }
 
@@ -1524,18 +1599,42 @@ int
 PRactIP::
 run()
 {
-  if (cv_fold_>0) {
-    cross_validation(cv_fold_);
-  } else if (train_mode_){
-    if (unlabeled_aa_.size()>0)
-      semisupervised_training();
-    else
-      supervised_training();
-    store_parameters(param_file_.c_str());
-  } else {
-    restore_parameters(param_file_.c_str());
-    assert(!"not implemented yet");
+  if (cv_fold_>0 || train_mode_)
+  {
+    if (args_.size()>0)
+      load_labeled_data(args_[0]);
+    if (args_.size()>1)
+      load_unlabeled_data(args_[1]);
+
+    if (cv_fold_>0) {
+      cross_validation(cv_fold_);
+    } else if (train_mode_){
+      if (unlabeled_aa_.size()>0)
+        semisupervised_training();
+      else
+        supervised_training();
+      store_parameters(param_file_.c_str());
+    }
   }
+  else
+  {
+    if (args_.size()<2)
+    {
+      cmdline_parser_print_help();
+      return 0;
+    }
+    if (param_file_.empty())
+      default_parameters();
+    else
+      restore_parameters(param_file_.c_str());
+
+    AA aa(args_[0]); 
+    RNA rna(args_[1]);
+    VVU predicted_int;
+    float s=predict_interaction(aa, rna, predicted_int);
+    show_result(aa, rna, predicted_int, s);
+  }
+
   return 0;
 }
 

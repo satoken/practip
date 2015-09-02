@@ -11,6 +11,7 @@ class PRactIP
 {
 public:
   struct RNA {
+    std::string name;
     std::string seq;
     std::string ss;
     std::string g2;
@@ -26,6 +27,7 @@ public:
   };
 
   struct AA {
+    std::string name;
     std::string seq;
     std::string ss;
     std::string g10;
@@ -111,6 +113,7 @@ public:
   PRactIP()
     : feature_weight_(FG_NUM),
       use_feature_(FG_NUM, true),
+      train_mode_(false),
       n_th_(1),
       aa_int_max_(-1u),
       rna_int_max_(-1u)
@@ -125,6 +128,7 @@ private:
   uint load_unlabeled_data(const std::string& filename);
   void store_parameters(const char* filename) const;
   void restore_parameters(const char* filename);
+  void default_parameters();
 
   void supervised_training() { semisupervised_training(); }
   void supervised_training(const VU& use_idx) { semisupervised_training(use_idx); }
@@ -163,6 +167,8 @@ private:
 
   float calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, const VVU& interactions) const;
 
+  void show_result(const AA& aa, const RNA& rna, const VVU& predicted_int, float score) const;
+
 private:
   std::vector<AA> labeled_aa_;
   std::vector<RNA> labeled_rna_;
@@ -188,6 +194,7 @@ private:
   uint cv_fold_;
   uint aa_int_max_;
   uint rna_int_max_;
+  std::vector<std::string> args_;
 
 private:
   static uint epoch;
