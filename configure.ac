@@ -50,11 +50,8 @@ AC_ARG_WITH([cplex], AS_HELP_STRING([--with-cplex], [support CPLEX optimizer]),
   [
     if test "$with_cplex" != "no"; then
       CPPFLAGS="-DWITH_CPLEX -DIL_STD $CPPFLAGS"
-      AC_CHECK_HEADERS([ilconcert/ilomodel.h])
-      AC_CHECK_LIB([concert], [main])
       AC_CHECK_HEADERS([ilcplex/ilocplex.h])
       AC_CHECK_LIB([cplex], [main])
-      AC_CHECK_LIB([ilocplex], [main])
     fi
   ]
 )

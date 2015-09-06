@@ -5430,57 +5430,6 @@ if test "${with_cplex+set}" = set; then :
   withval=$with_cplex;
     if test "$with_cplex" != "no"; then
       CPPFLAGS="-DWITH_CPLEX -DIL_STD $CPPFLAGS"
-      for ac_header in ilconcert/ilomodel.h
-do :
-  ac_fn_cxx_check_header_mongrel "$LINENO" "ilconcert/ilomodel.h" "ac_cv_header_ilconcert_ilomodel_h" "$ac_includes_default"
-if test "x$ac_cv_header_ilconcert_ilomodel_h" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_ILCONCERT_ILOMODEL_H 1
-_ACEOF
-
-fi
-
-done
-
-      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lconcert" >&5
-$as_echo_n "checking for main in -lconcert... " >&6; }
-if ${ac_cv_lib_concert_main+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lconcert  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-
-int
-main ()
-{
-return main ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_cxx_try_link "$LINENO"; then :
-  ac_cv_lib_concert_main=yes
-else
-  ac_cv_lib_concert_main=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_concert_main" >&5
-$as_echo "$ac_cv_lib_concert_main" >&6; }
-if test "x$ac_cv_lib_concert_main" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBCONCERT 1
-_ACEOF
-
-  LIBS="-lconcert $LIBS"
-
-fi
-
       for ac_header in ilcplex/ilocplex.h
 do :
   ac_fn_cxx_check_header_mongrel "$LINENO" "ilcplex/ilocplex.h" "ac_cv_header_ilcplex_ilocplex_h" "$ac_includes_default"
@@ -5529,45 +5478,6 @@ if test "x$ac_cv_lib_cplex_main" = xyes; then :
 _ACEOF
 
   LIBS="-lcplex $LIBS"
-
-fi
-
-      { $as_echo "$as_me:${as_lineno-$LINENO}: checking for main in -lilocplex" >&5
-$as_echo_n "checking for main in -lilocplex... " >&6; }
-if ${ac_cv_lib_ilocplex_main+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  ac_check_lib_save_LIBS=$LIBS
-LIBS="-lilocplex  $LIBS"
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-
-
-int
-main ()
-{
-return main ();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_cxx_try_link "$LINENO"; then :
-  ac_cv_lib_ilocplex_main=yes
-else
-  ac_cv_lib_ilocplex_main=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-LIBS=$ac_check_lib_save_LIBS
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ilocplex_main" >&5
-$as_echo "$ac_cv_lib_ilocplex_main" >&6; }
-if test "x$ac_cv_lib_ilocplex_main" = xyes; then :
-  cat >>confdefs.h <<_ACEOF
-#define HAVE_LIBILOCPLEX 1
-_ACEOF
-
-  LIBS="-lilocplex $LIBS"
 
 fi
 
