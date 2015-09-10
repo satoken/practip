@@ -85,4 +85,4 @@ The first column is the filename of FASTA formatted amino-acid sequences, the se
 
 References
 ----------
-* Sato, K., Kashiwagi, S., Sakakibara, Y.: A max-margin model for predicting residue-base contacts in protein-RNA interactions, in press.
+* Sato, K., Kashiwagi, S., Sakakibara, Y.: A max-margin model for predicting residue-base contacts in protein-RNA interactions, in press. [preprint](http://dx.doi.org/10.1101/022459)
