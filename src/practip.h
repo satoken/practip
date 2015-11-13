@@ -17,8 +17,10 @@ public:
     std::string g2;
     
     RNA() {}
-    RNA(const std::string& filename) : RNA() { read(filename); }
-    int read(const std::string& filename);
+    RNA(const std::string& fa_name, const std::string& ss_name) : RNA() { read(fa_name, ss_name); }
+    int read(const std::string& fa_name, const std::string& ss_name);
+    int read_fa(const std::string& fa_name);
+    int read_ss(const std::string& ss_name);
 
     static char group2(char);
     static void structural_profile(const std::string& ss, std::string& profile);
@@ -36,8 +38,10 @@ public:
     std::string g2;
     
     AA() {}
-    AA(const std::string& filename) : AA() { read(filename); }
-    int read(const std::string& filename);
+    AA(const std::string& fa_name, const std::string& ss_name) : AA() { read(fa_name, ss_name); }
+    int read(const std::string& fa_name, const std::string& ss_name);
+    int read_fa(const std::string& fa_name);
+    int read_ss(const std::string& ss_name);
 
     static char group10(char a);
     static char group8(char a);

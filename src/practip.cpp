@@ -157,15 +157,15 @@ uint
 PRactIP::
 load_labeled_data(const std::string& filename)
 {
-  std::string aa_seq, rna_seq, matching;
+  std::string aa_seq, aa_ss, rna_seq, rna_ss, matching;
   std::ifstream is(filename.c_str());
   std::cout << "loading labeled data" << std::endl;
-  while (is >> aa_seq >> rna_seq >> matching) {
-    std::cout << aa_seq << " " << rna_seq << " " << matching << std::endl;
+  while (is >> aa_seq >> aa_ss >> rna_seq >> rna_ss >> matching) {
+    std::cout << aa_seq << " " << aa_ss << " " << rna_seq << " " << rna_ss << " " << matching << std::endl;
     labeled_aa_.push_back(AA());
-    uint aa_len=labeled_aa_.back().read(aa_seq);
+    uint aa_len=labeled_aa_.back().read(aa_seq, aa_ss);
     labeled_rna_.push_back(RNA());
-    labeled_rna_.back().read(rna_seq);
+    labeled_rna_.back().read(rna_seq, rna_ss);
     labeled_int_.push_back(VVU(aa_len));
     read_correct_interaction(matching, labeled_int_.back());
   }
@@ -176,24 +176,26 @@ uint
 PRactIP::
 load_unlabeled_data(const std::string& filename)
 {
-  std::string aa_seq1, rna_seq1;
-  std::string aa_seq2, rna_seq2;
+  std::string aa_seq1, aa_ss1, rna_seq1, rna_ss1;
+  std::string aa_seq2, aa_ss2, rna_seq2, rna_ss2;
   std::string aa_al, aa_sc;
   std::string rna_al, rna_sc;
   std::ifstream is(filename.c_str());
   std::cout << "loading unlabeled data" << std::endl;
-  while (is >> aa_seq1 >> rna_seq1 >> aa_seq2 >> rna_seq2 >> aa_al >> aa_sc >> rna_al >> rna_sc) {
-    std::cout << aa_seq1 << " " << rna_seq1 << " " 
-              << aa_seq2 << " " << rna_seq2 << " " 
+  while (is >> aa_seq1 >> aa_ss1 >> rna_seq1 >> rna_ss1 >>
+         aa_seq2 >> aa_ss2 >> rna_seq2 >> rna_ss2 >> 
+         aa_al >> aa_sc >> rna_al >> rna_sc) {
+    std::cout << aa_seq1 << " " << aa_ss1 << " " << rna_seq1 << " " << rna_ss2 << " "
+              << aa_seq2 << " " << aa_ss2 << " " << rna_seq2 << " " << rna_ss2 << " "
               << aa_al << " " << aa_sc << " " 
               << rna_al << " " << rna_sc << std::endl;
 
     unlabeled_aa_.push_back(Alignment<AA>(aa_al.c_str(), aa_sc.c_str()));
-    unlabeled_aa_.back().add_seq(AA(aa_seq1));
-    unlabeled_aa_.back().add_seq(AA(aa_seq2));
+    unlabeled_aa_.back().add_seq(AA(aa_seq1, aa_ss1));
+    unlabeled_aa_.back().add_seq(AA(aa_seq2, aa_ss2));
     unlabeled_rna_.push_back(Alignment<RNA>(rna_al.c_str(), rna_sc.c_str()));
-    unlabeled_rna_.back().add_seq(RNA(rna_seq1));
-    unlabeled_rna_.back().add_seq(RNA(rna_seq2));
+    unlabeled_rna_.back().add_seq(RNA(rna_seq1, rna_ss1));
+    unlabeled_rna_.back().add_seq(RNA(rna_seq2, rna_ss2));
   }
   return unlabeled_aa_.size();
 }
@@ -1157,57 +1159,10 @@ show_result(const AA& aa, const RNA& rna, const VVU& predicted_int, float score)
 
 int
 PRactIP::AA::
-read(const std::string& filename)
+read(const std::string& fa_name, const std::string& ss_name)
 {
-  char line[BUFSIZ];
-  std::string basename;
-  FILE* fp = fopen(filename.c_str(), "r");
-  if (fp==NULL) {
-    basename=filename;
-    fp = fopen((filename+".seq").c_str(), "r");
-  } else {
-    basename=filename.substr(0, filename.find_last_of('.'));
-  }
-  if (fp==NULL)
-    throw std::runtime_error(std::string(strerror(errno)) + ": " + filename);
-
-  while (fgets(line, sizeof(line), fp)) {
-    char* nr = strchr(line, '\n');
-    if (nr) *nr='\0';
-    if (line[0]!='>') {
-      this->seq+=line;
-    } else {
-      this->name=&line[1];
-    }
-  }
-  fclose(fp);
-
-#if 0
-  fp = fopen((basename+".2nd").c_str(), "r");
-  while (fgets(line, sizeof(line), fp)) {
-    for (uint i=0; line[i]!='\0'; ++i) {
-      switch (line[i]) {
-        case 'C': line[i]='.'; break;
-        case 'E': line[i]='>'; break;
-        case 'H': line[i]='='; break;
-        case '\n': line[i]='\0'; break;
-      }
-    }
-    this->ss += line;
-  }
-#else
-  fp = fopen((basename+".ss2").c_str(), "r");
-  while (fgets(line, sizeof(line), fp)) {
-    if (line[0]=='\n' || line[0]=='#') continue;
-    switch (line[7]) {
-      case 'C': case 'E': case 'H':
-        ss.push_back(line[7]);
-        break;
-      default: assert(!"unreachable"); break;
-    }
-  }
-#endif
-  fclose(fp);
+  read_fa(fa_name);
+  read_ss(ss_name);
 
   g10.resize(seq.size());
   std::transform(seq.begin(), seq.end(), g10.begin(), group10);
@@ -1218,8 +1173,73 @@ read(const std::string& filename)
   g2.resize(seq.size());
   std::transform(seq.begin(), seq.end(), g2.begin(), group2);
 
-  assert(this->seq.size()==this->ss.size());
+  assert(seq.size()==ss.size());
+  return seq.size();
+}
+
+int
+PRactIP::AA::
+read_fa(const std::string& fa_name)
+{
+  std::string line;
+  std::ifstream ifs(fa_name);
+  if (!ifs)
+    throw std::runtime_error(std::string(strerror(errno)) + ": " + fa_name);
+  while (std::getline(ifs, line)) {
+    if (line[0]=='>')
+      this->name+=line.substr(1);
+    else
+      this->seq+=line;
+  }
+  ifs.close();
+
   return this->seq.size();
+}
+  
+
+int
+PRactIP::AA::
+read_ss(const std::string& ss_name)
+{
+  std::string line;
+  std::ifstream ifs(ss_name);
+  if (!ifs)
+    throw std::runtime_error(std::string(strerror(errno)) + ": " + ss_name);
+
+  std::getline(ifs, line);
+  
+  if (line[0]=='#') {           // suppose PSIPRED format
+    while (std::getline(ifs, line)) {
+      if (line[0]=='\n' || line[0]=='#') continue;
+      switch (line[7]) {
+        case 'E': case 'H':
+          ss.push_back(line[7]);
+          break;
+        default:
+          //assert(!"unreachable"); break;
+        case 'C':         
+          ss.push_back('C');
+          break;
+      }
+    }
+  } else {                      // suppose VIENNA-like format
+    std::getline(ifs, line);    // this is the sequence.
+    std::getline(ifs, line);    // this is the secondary structure
+    for (uint i=0; i!=line.size(); ++i) {
+      switch (line[i]) {
+        case 'E': case 'H':
+          ss.push_back(line[i]);
+          break;
+        default:
+          //assert(!"unreachable"); break;
+        case 'C':         
+          ss.push_back('C');
+          break;
+      }
+    }    
+  }
+
+  return ss.size();
 }
 
 // static
@@ -1247,32 +1267,48 @@ max_intraction(char x)
 
 int
 PRactIP::RNA::
-read(const std::string& filename) 
+read(const std::string& fa_name, const std::string& ss_name)
 {
-  char line[BUFSIZ];
-  std::string basename;
-  FILE* fp = fopen(filename.c_str(), "r");
-  if (fp==NULL) {
-    basename=filename;
-    fp = fopen((filename+".seq").c_str(), "r");
-  } else {
-    basename=filename.substr(0, filename.find_last_of('.'));
-  }
-  if (fp==NULL)
-    throw std::runtime_error(std::string(strerror(errno)) + ": " + filename);
+  read_fa(fa_name);
+  read_ss(ss_name);
 
-  while (fgets(line, sizeof(line), fp)) {
-    char* nr = strchr(line, '\n');
-    if (nr) *nr='\0';
-    if (line[0]!='>') {
+  g2.resize(seq.size());
+  std::transform(seq.begin(), seq.end(), g2.begin(), group2);
+
+  assert(this->seq.size()==this->ss.size());
+  return this->seq.size();
+}
+
+int
+PRactIP::RNA::
+read_fa(const std::string& fa_name) 
+{
+  std::string line;
+  std::ifstream ifs(fa_name);
+  if (!ifs)
+    throw std::runtime_error(std::string(strerror(errno)) + ": " + fa_name);
+  while (std::getline(ifs, line)) {
+    if (line[0]=='>')
+      this->name+=line.substr(1);
+    else
       this->seq+=line;
-    } else {
-      this->name=&line[1];
-    }
   }
-  fclose(fp);
+  ifs.close();
 
-  fp = fopen((basename+".ss").c_str(), "r");
+  return this->seq.size();
+}
+
+int
+PRactIP::RNA::
+read_ss(const std::string& ss_name) 
+{
+  std::string line;
+  std::ifstream ifs(ss_name);
+  if (!ifs)
+    throw std::runtime_error(std::string(strerror(errno)) + ": " + ss_name);
+
+#if 0
+  FILE* fp = fopen((basename+".ss").c_str(), "r");
   if (fp==NULL) {
     const char* prog=getenv("CENTROID_FOLD");
     if (!prog) prog="centroid_fold";
@@ -1301,15 +1337,14 @@ read(const std::string& filename)
     }
   }
   fclose(fp);
+#endif
 
-  assert(ss_str.size()==this->seq.size());
-  structural_profile(ss_str, ss);
+  std::getline(ifs, line);      // this is the header;
+  std::getline(ifs, line);      // this is the sequence.
+  std::getline(ifs, line);      // this is the secondary structure
+  structural_profile(line, ss);
 
-  g2.resize(seq.size());
-  std::transform(seq.begin(), seq.end(), g2.begin(), group2);
-
-  assert(this->seq.size()==this->ss.size());
-  return this->seq.size();
+  return ss.size();
 }
 
 // groups defined by Murphy et al., Protein Eng., 2000, 13(3), pp.149-152
@@ -1618,7 +1653,7 @@ run()
   }
   else
   {
-    if (args_.size()<2)
+    if (args_.size()<4)
     {
       cmdline_parser_print_help();
       return 0;
@@ -1628,8 +1663,8 @@ run()
     else
       restore_parameters(param_file_.c_str());
 
-    AA aa(args_[0]); 
-    RNA rna(args_[1]);
+    AA aa(args_[0], args_[1]); 
+    RNA rna(args_[2], args_[3]);
     VVU predicted_int;
     float s=predict_interaction(aa, rna, predicted_int);
     show_result(aa, rna, predicted_int, s);
