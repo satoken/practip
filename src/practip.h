@@ -66,6 +66,8 @@ public:
     const VF& q_score() const { return q_score_; }
     const VVU& idx() const { return idx_; }
     void add_seq(const T& seq) { seq_.push_back(seq); }
+    template <class... Args>
+    void emplace_add_seq(Args&&... args) { seq_.emplace_back(args...); }
     const T& seq(uint i) const { return seq_[i]; }
 
   private:

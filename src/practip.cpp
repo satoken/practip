@@ -166,7 +166,7 @@ load_labeled_data(const std::string& filename)
     uint aa_len=labeled_aa_.back().read(aa_seq, aa_ss);
     labeled_rna_.push_back(RNA());
     labeled_rna_.back().read(rna_seq, rna_ss);
-    labeled_int_.push_back(VVU(aa_len));
+    labeled_int_.emplace_back(aa_len);
     read_correct_interaction(matching, labeled_int_.back());
   }
   return labeled_aa_.size();
@@ -190,12 +190,12 @@ load_unlabeled_data(const std::string& filename)
               << aa_al << " " << aa_sc << " " 
               << rna_al << " " << rna_sc << std::endl;
 
-    unlabeled_aa_.push_back(Alignment<AA>(aa_al.c_str(), aa_sc.c_str()));
-    unlabeled_aa_.back().add_seq(AA(aa_seq1, aa_ss1));
-    unlabeled_aa_.back().add_seq(AA(aa_seq2, aa_ss2));
-    unlabeled_rna_.push_back(Alignment<RNA>(rna_al.c_str(), rna_sc.c_str()));
-    unlabeled_rna_.back().add_seq(RNA(rna_seq1, rna_ss1));
-    unlabeled_rna_.back().add_seq(RNA(rna_seq2, rna_ss2));
+    unlabeled_aa_.emplace_back(aa_al.c_str(), aa_sc.c_str());
+    unlabeled_aa_.back().emplace_add_seq(aa_seq1, aa_ss1);
+    unlabeled_aa_.back().emplace_add_seq(aa_seq2, aa_ss2);
+    unlabeled_rna_.emplace_back(rna_al.c_str(), rna_sc.c_str());
+    unlabeled_rna_.back().emplace_add_seq(rna_seq1, rna_ss1);
+    unlabeled_rna_.back().emplace_add_seq(rna_seq2, rna_ss2);
   }
   return unlabeled_aa_.size();
 }
@@ -443,7 +443,7 @@ extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func func) con
     { FG_Pg4_3_Rss_3,  aa.g4.c_str(),  1, rna.ss.c_str(),  1 },
     { FG_Pg4_5_R_5,    aa.g4.c_str(),  2, rna.seq.c_str(), 2 },
     { FG_Pg4_5_Rss_5,  aa.g4.c_str(),  2, rna.ss.c_str(),  2 },
-    { -1u, NULL, 0, NULL, 0 }
+    { -1u, nullptr, 0, nullptr, 0 }
   };
   
   const uint rna_len=rna.seq.size();
@@ -478,7 +478,7 @@ extract_aa_feature(const AA& aa, uint i, Func func) const
     { FG_Pg10_7, aa.g10.c_str(), 3 },
     { FG_Pg4_5,  aa.g4.c_str(),  2 },
     { FG_Pg4_7,  aa.g4.c_str(),  3 },
-    { -1u, NULL, 0 }
+    { -1u, nullptr, 0 }
   };
   
   const uint aa_len=aa.seq.size();
@@ -507,7 +507,7 @@ extract_rna_feature(const RNA& rna, uint j, Func func) const
     { FG_R_5,   rna.seq.c_str(), 2 },
     { FG_Rss_3, rna.ss.c_str(),  1 },
     { FG_Rss_5, rna.ss.c_str(),  2 },
-    { -1u, NULL, 0 }
+    { -1u, nullptr, 0 }
   };
   
   const uint rna_len=rna.seq.size();
@@ -577,7 +577,7 @@ void
 PRactIP::
 default_parameters()
 {
-  struct { const char* name; float value; } params[] = {
+  static struct { const char* name; float value; } params[] = {
 #include "defparam.dat"
   };
 
@@ -638,7 +638,7 @@ calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_w
   {
     rna_weight[j] = 0.0;
     extract_rna_feature(rna, j, 
-                       [&](uint fgroup, const char* fname, uint j) 
+                        [&](uint fgroup, const char* fname, uint j) 
                         {
                           rna_weight[j] += update_fobos(fgroup, fname);
                         }
@@ -1309,7 +1309,7 @@ read_ss(const std::string& ss_name)
 
 #if 0
   FILE* fp = fopen((basename+".ss").c_str(), "r");
-  if (fp==NULL) {
+  if (fp==nullptr) {
     const char* prog=getenv("CENTROID_FOLD");
     if (!prog) prog="centroid_fold";
     char cmd[1000];
@@ -1543,7 +1543,7 @@ read_alignment(const char* filename)
     {
       if (!seq.empty())
       {
-        idx_.push_back(VU(seq.size(), -1U));
+        idx_.emplace_back(seq.size(), -1U);
         VU& x=idx_.back();
         for (uint i=0, p=0; i!=seq.size(); ++i)
           if (seq[i]!='-') x[i]=p++;
@@ -1557,7 +1557,7 @@ read_alignment(const char* filename)
   }
   if (!seq.empty())
   {
-    idx_.push_back(VU(seq.size(), -1U));
+    idx_.emplace_back(seq.size(), -1U);
     VU& x=idx_.back();
     for (uint i=0, p=0; i!=seq.size(); ++i)
       if (seq[i]!='-') x[i]=p++;
