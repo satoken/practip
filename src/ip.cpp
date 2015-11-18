@@ -24,6 +24,7 @@
 #include "ip.h"
 #include <vector>
 #include <cassert>
+#include <stdexcept>
 #ifdef WITH_GLPK
 #include <glpk.h>
 #endif
