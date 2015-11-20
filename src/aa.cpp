@@ -1,7 +1,10 @@
 #include <string>
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
+#include <cerrno>
+#include <cstring>
 #include <cassert>
 #include "aa.h"
 #include "typedef.h"

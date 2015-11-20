@@ -1,5 +1,8 @@
 #include <iostream>
 #include <fstream>
+#include <stdexcept>
+#include <cerrno>
+#include <cstring>
 #include "alignment.h"
 #include "typedef.h"
 

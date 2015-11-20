@@ -1,9 +1,12 @@
 #include <string>
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
 #include <stack>
 #include <cassert>
+#include <cerrno>
+#include <cstring>
 #include "rna.h"
 #include "typedef.h"
 
