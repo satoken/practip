@@ -204,7 +204,7 @@ supervised_training(FeatureManager& fm, const AA& aa, const RNA& rna, const VVU&
   predict_interaction(fm, aa, rna, int_weight, aa_weight, rna_weight, predicted_int, mu);
   float score_for_predict = calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
 
-#if 1
+#if 0
   for (uint i=0; i!=correct_int.size(); ++i) {
     if (!correct_int[i].empty() || !predicted_int[i].empty())
     {
