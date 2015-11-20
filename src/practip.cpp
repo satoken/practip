@@ -16,37 +16,6 @@
 #include "practip.h"
 #include "cmdline.h"
 
-//static
-uint PRactIP::epoch = 0;
-
-static
-const char *groupname[] = {
-  "Pro_3",                      // FG_P_3,
-  "Pro_5",                      // FG_P_5,
-  "RNA_3",                      // FG_R_3,
-  "RNA_5",                      // FG_R_5,
-  "Pro_3-RNA_3",                // FG_P_3_R_3,
-  "Pro_5-RNA_5",                // FG_P_5_R_5,
-  "ProSS_3",                    // FG_Pss_3,
-  "ProSS_5",                    // FG_Pss_5,
-  "RNASS_3",                    // FG_Rss_3,
-  "RNASS_5",                    // FG_Rss_5,
-  "ProSS_3-RNASS_3",            // FG_Pss_3_Rss_3,
-  "ProSS_5-RNASS_5",            // FG_Pss_5_Rss_5,
-  "ProG10_5",                   // FG_Pg10_5,
-  "ProG10_7",                   // FG_Pg10_7,
-  "ProG10_3-RNA_3",             // FG_Pg10_3_R_3,
-  "ProG10_3-RNASS_3",           // FG_Pg10_3_Rss_3,
-  "ProG10_5-RNA_5",             // FG_Pg10_5_R_5,
-  "ProG10_5-RNASS_5",           // FG_Pg10_5_Rss_5,
-  "ProG4_5",                    // FG_Pg4_5,
-  "ProG4_7",                    // FG_Pg4_7,
-  "ProG4_3-RNA_3",              // FG_Pg4_3_R_3,
-  "ProG4_3-RNASS_3",            // FG_Pg4_3_Rss_3,
-  "ProG4_5-RNA_5",              // FG_Pg4_5_R_5,
-  "ProG4_5-RNASS_5",            // FG_Pg4_5_Rss_5,
-};
-
 struct Accuracy
 {
   uint tp, tn, fp, fn;
@@ -221,18 +190,20 @@ calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight
 
 float
 PRactIP::
-supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin /*=true*/, float w /*=1.0*/)
+supervised_training(FeatureManager& fm, const AA& aa, const RNA& rna, const VVU& correct_int,
+                    bool max_margin /*=true*/, float w /*=1.0*/)
 {
-  float loss=0.0;
   VVF int_weight;
   VF aa_weight, rna_weight;
-  calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
-  loss -= calculate_score(int_weight, aa_weight, rna_weight, correct_int);
+  fm.calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
+  float score_for_correct = calculate_score(int_weight, aa_weight, rna_weight, correct_int);
+
   if (max_margin)
     penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
   VVU predicted_int;
-  predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
-  loss += calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
+  predict_interaction(fm, aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
+  float score_for_predict = calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
+
 #if 0
   for (uint i=0; i!=correct_int.size(); ++i) {
     if (!correct_int[i].empty() || !predicted_int[i].empty())
@@ -248,9 +219,10 @@ supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool m
   }
   std::cout << std::endl;
 #endif  
-  update_feature_weight(aa, rna, predicted_int, correct_int, w);
 
-  return loss;
+  fm.update_feature_weight(aa, rna, predicted_int, correct_int, w);
+
+  return score_for_predict - score_for_correct;;
 }
 
 void
@@ -270,11 +242,12 @@ cross_validation(uint n)
     }
 
     std::cout << "[Set " << i << "]" << std::endl;
-    semisupervised_training(train);
+    FeatureManager fm(lambda_, eta0_);
+    semisupervised_training(fm, train);
 
     for (auto j : test) {
       VVU predicted_int;
-      predict_interaction(labeled_aa_[j], labeled_rna_[j], predicted_int);
+      predict_interaction(fm, labeled_aa_[j], labeled_rna_[j], predicted_int);
       Accuracy int_acc, aa_acc, rna_acc;
       calculate_accuracy(labeled_aa_[j], labeled_rna_[j],
                          predicted_int, labeled_int_[j],
@@ -285,7 +258,7 @@ cross_validation(uint n)
     }
     for (auto j : train) {
       VVU predicted_int;
-      predict_interaction(labeled_aa_[j], labeled_rna_[j], predicted_int);
+      predict_interaction(fm, labeled_aa_[j], labeled_rna_[j], predicted_int);
       Accuracy int_acc, aa_acc, rna_acc;
       calculate_accuracy(labeled_aa_[j], labeled_rna_[j],
                          predicted_int, labeled_int_[j],
@@ -315,26 +288,24 @@ cross_validation(uint n)
 
 void
 PRactIP::
-semisupervised_training()
+semisupervised_training(FeatureManager& fm)
 {
   VU idx(labeled_aa_.size());
   std::iota(std::begin(idx), std::end(idx), 0);
-  semisupervised_training(idx);
+  semisupervised_training(fm, idx);
 }
 
 void
 PRactIP::
-semisupervised_training(const VU& use_idx)
+semisupervised_training(FeatureManager& fm, const VU& use_idx)
 {
-  epoch=0;
   // initial supervised learning
   VU idx(use_idx);
   for (uint t=0; t!=d_max_; ++t) {
     float total_loss=0.0;
-    std::random_shuffle(std::begin(idx), std::end(idx)); // shuffle the order of training data
+    std::random_shuffle(std::begin(idx), std::end(idx)); // shuffle the order for each round
     for (auto i : idx) {
-      total_loss += supervised_training(labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
-      epoch++;
+      total_loss += supervised_training(fm, labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
     }
   }
 
@@ -347,7 +318,7 @@ semisupervised_training(const VU& use_idx)
 
     for (uint u=0; u!=g_max_; ++u)
     {
-      std::random_shuffle(idx.begin(), idx.end());
+      std::random_shuffle(idx.begin(), idx.end()); // shuffle the order for each round
 
       float unlabeled_loss=0.0;
       float total_loss=0.0;
@@ -356,40 +327,39 @@ semisupervised_training(const VU& use_idx)
         if (i<labeled_aa_.size()) // labeled data
         {
           //std::cout << ">> supervised" << std::endl;
-          total_loss += supervised_training(labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
-          epoch++;
+          total_loss += supervised_training(fm, labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
         }
         else                    // unlabeled data
         {
           const auto iu=i-labeled_aa_.size();
           // common structure prediction
           VVVU common_int;
-          predict_common_interaction(unlabeled_aa_[iu], unlabeled_rna_[iu], common_int);
+          predict_common_interaction(fm, unlabeled_aa_[iu], unlabeled_rna_[iu], common_int);
           assert(common_int.size()==unlabeled_aa_[iu].num_sequences());
           assert(common_int.size()==unlabeled_rna_[iu].num_sequences());
           // train from predicted common structures
           for (uint k=0; k!=common_int.size(); ++k)
           {
             //std::cout << ">> semi-supervised" << std::endl;
-            unlabeled_loss += supervised_training(unlabeled_aa_[iu].seq(k), unlabeled_rna_[iu].seq(k), common_int[k], false, mu_);
-            epoch++;
+            unlabeled_loss += supervised_training(fm, unlabeled_aa_[iu].seq(k), unlabeled_rna_[iu].seq(k), 
+                                                  common_int[k], false, mu_);
           }
         }
       }
     }
   }
 
-  regularization_fobos();
+  fm.regularization_fobos();
 }
 
 float
 PRactIP::
-predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int, float w /*=1.0*/)
+predict_interaction(const FeatureManager& fm, const AA& aa, const RNA& rna, VVU& predicted_int) const
 {
   VVF int_weight;
   VF aa_weight, rna_weight;
-  calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
-  return predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int, w);
+  fm.calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
+  return predict_interaction(fm, aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
 }
 
 void
@@ -400,248 +370,6 @@ read_correct_interaction(const std::string& filename, VVU& correct_int) const
   std::ifstream is(filename.c_str());
   while (is >> a >> r)
     correct_int[a].push_back(r);
-}
-
-inline
-static
-char*
-feature_string(const char* str, uint str_len, uint p, uint w, char* fname)
-{
-  char* f=fname;
-  for (uint i=w; i>=1; --i)
-    *f++ = p>=i ? str[p-i] : '-';
-  *f++ = str[p];
-  for (uint i=1; i<=w; ++i)
-    *f++ = p+i<str_len ? str[p+i] : '-';
-  *f++='\0';
-  return fname;
-}
-
-template < class Func >
-void
-PRactIP::
-extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func func) const
-{
-  struct {
-    uint id;
-    const char* aa_str;
-    uint aa_w;
-    const char* rna_str;
-    uint rna_w;
-  } features[] = {
-    { FG_P_3_R_3,      aa.seq.c_str(), 1, rna.seq.c_str(), 1 },
-    { FG_P_5_R_5,      aa.seq.c_str(), 2, rna.seq.c_str(), 2 },
-    { FG_Pss_3_Rss_3,  aa.ss.c_str(),  1, rna.ss.c_str(),  1 },
-    { FG_Pss_5_Rss_5,  aa.ss.c_str(),  2, rna.ss.c_str(),  2 },
-    { FG_Pg10_3_R_3,   aa.g10.c_str(), 1, rna.seq.c_str(), 1 },
-    { FG_Pg10_3_Rss_3, aa.g10.c_str(), 1, rna.ss.c_str(),  1 },
-    { FG_Pg10_5_R_5,   aa.g10.c_str(), 2, rna.seq.c_str(), 2 },
-    { FG_Pg10_5_Rss_5, aa.g10.c_str(), 2, rna.ss.c_str(),  2 },
-    { FG_Pg4_3_R_3,    aa.g4.c_str(),  1, rna.seq.c_str(), 1 },
-    { FG_Pg4_3_Rss_3,  aa.g4.c_str(),  1, rna.ss.c_str(),  1 },
-    { FG_Pg4_5_R_5,    aa.g4.c_str(),  2, rna.seq.c_str(), 2 },
-    { FG_Pg4_5_Rss_5,  aa.g4.c_str(),  2, rna.ss.c_str(),  2 },
-    { -1u, nullptr, 0, nullptr, 0 }
-  };
-  
-  const uint rna_len=rna.seq.size();
-  const uint aa_len=aa.seq.size();
-  char buf[20];
-  for (uint k=0; features[k].id!=-1u; ++k) {
-    if (use_feature_[features[k].id]) {
-      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf);
-      buf[features[k].aa_w*2+1]=',';
-      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf+features[k].aa_w*2+2);
-      func(features[k].id, buf, i, j);
-      //std::cout << features[k].id << " " << buf << std::endl;
-    }
-  }
-}
-
-template < class Func >
-void
-PRactIP::
-extract_aa_feature(const AA& aa, uint i, Func func) const
-{
-  struct {
-    uint id;
-    const char* aa_str;
-    uint aa_w;
-  } features[] = {
-    { FG_P_3,    aa.seq.c_str(), 1 },
-    { FG_P_5,    aa.seq.c_str(), 2 },
-    { FG_Pss_3,  aa.ss.c_str(),  1 },
-    { FG_Pss_5,  aa.ss.c_str(),  2 },
-    { FG_Pg10_5, aa.g10.c_str(), 2 },
-    { FG_Pg10_7, aa.g10.c_str(), 3 },
-    { FG_Pg4_5,  aa.g4.c_str(),  2 },
-    { FG_Pg4_7,  aa.g4.c_str(),  3 },
-    { -1u, nullptr, 0 }
-  };
-  
-  const uint aa_len=aa.seq.size();
-  char buf[20];
-
-  for (uint k=0; features[k].id!=-1u; ++k) {
-    if (use_feature_[features[k].id]) {
-      feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf);
-      func(features[k].id, buf, i);
-      //std::cout << features[k].id << " " << buf << std::endl;
-    }
-  }
-}
-
-template < class Func >
-void
-PRactIP::
-extract_rna_feature(const RNA& rna, uint j, Func func) const
-{
-  struct {
-    uint id;
-    const char* rna_str;
-    uint rna_w;
-  } features[] = {
-    { FG_R_3,   rna.seq.c_str(), 1 },
-    { FG_R_5,   rna.seq.c_str(), 2 },
-    { FG_Rss_3, rna.ss.c_str(),  1 },
-    { FG_Rss_5, rna.ss.c_str(),  2 },
-    { -1u, nullptr, 0 }
-  };
-  
-  const uint rna_len=rna.seq.size();
-  char buf[20];
-
-  for (uint k=0; features[k].id!=-1u; ++k) {
-    if (use_feature_[features[k].id]) {
-      feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf);
-      func(features[k].id, buf, j);
-      //std::cout << features[k].id << " " << buf << std::endl;
-    }
-  }
-}
-
-void
-PRactIP::
-store_parameters(const char* filename) const
-{
-  std::ofstream os(filename);
-  if (!os) throw std::runtime_error(std::string(strerror(errno)) + ": " + filename);
-
-  for (uint k=0; k!=feature_weight_.size(); ++k)
-  {
-    os << "[ " << groupname[k] << " weight ]" << std::endl;
-    for (const auto& e : feature_weight_[k])
-    {
-      if (e.second.weight!=0.0)
-        os << e.first << " " << e.second.weight << std::endl;
-    }
-    os << std::endl;
-  }
-}
-
-void
-PRactIP::
-restore_parameters(const char* filename)
-{
-  std::ifstream is(filename);
-  if (!is) throw std::runtime_error(std::string(strerror(errno)) + ": " + filename);
-
-  for (auto f : feature_weight_)
-    f.clear();
-
-  uint k=-1u;
-  std::string first, second;
-  while (is >> first >> second)
-  {
-    if (first=="[")             // group name
-    {
-      //std::cout << second << std::endl;
-      std::string temp1, temp2;
-      is >> temp1 >> temp1;
-      auto p = std::find(std::begin(groupname), std::end(groupname), second);
-      if (p!=std::end(groupname))
-        k = p - std::begin(groupname);
-      else
-        throw std::runtime_error(std::string("unknown groupname: ") + second);
-    }
-    else if (k!=-1u)
-    {
-      feature_weight_[k][first].weight = std::atof(second.c_str());
-    }
-  }
-}
-
-void
-PRactIP::
-default_parameters()
-{
-  static struct { const char* name; float value; } params[] = {
-#include "defparam.dat"
-  };
-
-  for (auto f : feature_weight_)
-    f.clear();
-
-  uint k=-1u;
-  for (const auto& x : params) {
-    if (x.value==0.0)
-    {
-      auto p = std::find(std::begin(groupname), std::end(groupname), x.name);
-      if (p!=std::end(groupname))
-        k = p - std::begin(groupname);
-      else
-        throw std::runtime_error(std::string("unknown groupname: ") + x.name);
-    }
-    else if (k!=-1u)
-    {
-      feature_weight_[k][x.name].weight = x.value;
-    }
-  }
-}
-
-void
-PRactIP::
-calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight)
-{
-  int_weight.resize(aa.seq.size());
-  for (uint i=0; i!=int_weight.size(); ++i) 
-  {
-    int_weight[i].resize(rna.seq.size());
-    for (uint j=0; j!=int_weight[i].size(); ++j) 
-    {
-      int_weight[i][j] = 0.0;
-      extract_int_feature(aa, rna, i, j, 
-                          [&](uint fgroup, const char* fname, uint i, uint j) 
-                          {
-                            int_weight[i][j] += update_fobos(fgroup, fname);
-                          }
-        );
-    }
-  }
-
-  aa_weight.resize(aa.seq.size());
-  for (uint i=0; i!=aa_weight.size(); ++i) 
-  {
-    aa_weight[i] = 0.0;
-    extract_aa_feature(aa, i,
-                       [&](uint fgroup, const char* fname, uint i) 
-                       {
-                         aa_weight[i] += update_fobos(fgroup, fname);
-                       }
-      );
-  }
-
-  rna_weight.resize(rna.seq.size());
-  for (uint j=0; j!=rna_weight.size(); ++j) 
-  {
-    rna_weight[j] = 0.0;
-    extract_rna_feature(rna, j, 
-                        [&](uint fgroup, const char* fname, uint j) 
-                        {
-                          rna_weight[j] += update_fobos(fgroup, fname);
-                        }
-      );
-  }
 }
 
 void
@@ -680,172 +408,9 @@ penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, con
 
 void
 PRactIP::
-update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int, float w /*=1.0*/)
-{
-  assert(predicted_int.size()==correct_int.size());
-
-  // calculate gradients in correct interactions
-  //   interactions
-  typedef std::unordered_map<std::string,int> GM;
-  std::vector<GM> gr(FG_NUM);
-  for (uint i=0; i!=correct_int.size(); ++i)
-    for (auto j : correct_int[i])
-    {
-      extract_int_feature(aa, rna, i, j,
-                          [&] (uint fgroup, const char* fname, uint i, uint j)
-                          {
-                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
-                          }
-        );
-    }
-  //   amino acids
-  for (uint i=0; i!=correct_int.size(); ++i)
-    if (!correct_int[i].empty())
-    {
-      extract_aa_feature(aa, i, 
-                         [&] (uint fgroup, const char* fname, uint i)
-                         {
-                           gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
-                         }
-        );
-    }
-  //   RNAs
-  std::vector<bool> rna_has_int(rna.seq.size(), false);
-  for (uint i=0; i!=correct_int.size(); ++i)
-    for (auto j : correct_int[i])
-      rna_has_int[j] = true;
-  for (uint j=0; j!=rna_has_int.size(); ++j)
-    if (rna_has_int[j])
-    {
-      extract_rna_feature(rna, j, 
-                          [&] (uint fgroup, const char* fname, uint j)
-                          {
-                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
-                          }
-        );
-    }
-
-  // calculate gradients in predicted interactions
-  //   interactions
-  for (uint i=0; i!=predicted_int.size(); ++i) 
-    for (auto j : predicted_int[i])
-    {
-      extract_int_feature(aa, rna, i, j, 
-                          [&] (uint fgroup, const char* fname, uint i, uint j)
-                          {
-                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
-                          }
-        );
-    }
-  //   amino acids
-  for (uint i=0; i!=predicted_int.size(); ++i)
-    if (!predicted_int[i].empty())
-    {
-      extract_aa_feature(aa, i, 
-                         [&] (uint fgroup, const char* fname, uint i)
-                         {
-                           gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
-                         }
-        );
-    }
-  //   RNAs
-  std::fill(rna_has_int.begin(), rna_has_int.end(), false);
-  for (uint i=0; i!=predicted_int.size(); ++i)
-    for (auto j : predicted_int[i])
-      rna_has_int[j] = true;
-  for (uint j=0; j!=rna_has_int.size(); ++j)
-    if (rna_has_int[j])
-    {
-      extract_rna_feature(rna, j, 
-                          [&] (uint fgroup, const char* fname, uint j)
-                          {
-                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
-                          }
-        );
-    }
-
-  // update feature weights by AdaGrad
-  for (uint k=0; k!=gr.size(); ++k)
-  {
-    for (const auto& e : gr[k])
-    {
-      if (e.second!=0)
-      {
-        auto fe = feature_weight_[k].insert(std::make_pair(e.first, PRactIP::FeatureWeight())).first;
-        fe->second.weight -= w*e.second * eta0_/std::sqrt(1.0+fe->second.sum_of_grad2);
-        fe->second.sum_of_grad2 += w*e.second * w*e.second;
-#if 0
-        std::cerr << epoch << ", "
-                  << k << ", "
-                  << it->first << ", "
-                  << it->second << ", "
-                  << fe->second.weight << ", "
-                  << eta0_/std::sqrt(1.0+fe->second.sum_of_grad2) << std::endl;
-#endif
-        //assert(fe->second.last_updated == epoch);
-      }
-    }
-  }
-}
-
-static inline
-float
-clip(float w, float c)
-{
-  if(w >= 0)
-    return w>c ? w-c : 0.0;
-  else
-    return -clip(-w, c);
-}
-
-float
-PRactIP::
-update_fobos(uint fgroup, const char* fname)
-{
-  auto m=feature_weight_[fgroup].find(fname);
-  if (m!=feature_weight_[fgroup].end())
-  {
-    // lazy update for FOBOS
-    if (m->second.last_updated<epoch)
-    {
-      const float eta = eta0_/std::sqrt(1.0+m->second.sum_of_grad2);
-      const uint t = epoch - m->second.last_updated;
-      m->second.weight = clip(m->second.weight, lambda_*eta*t);
-      m->second.last_updated = epoch;
-    }
-    return m->second.weight;
-  }
-  return 0.0;
-}
-
-float
-PRactIP::
-regularization_fobos()
-{
-  // L1-norm
-  float sum1=0.0;
-  for (uint k=0; k!=feature_weight_.size(); ++k)
-  {
-    for (auto& e : feature_weight_[k])
-    {
-      if (e.second.last_updated<epoch)
-      {
-        const float eta = eta0_/std::sqrt(1.0+e.second.sum_of_grad2);
-        const uint t = epoch - e.second.last_updated;
-        e.second.weight = clip(e.second.weight, lambda_*eta*t);
-        e.second.last_updated = epoch;
-      }
-      sum1 += std::abs(e.second.weight);
-    }
-  }
-  return lambda_ * sum1;
-}
-
-void
-PRactIP::
 predict_interaction_object(const AA& aa, const RNA& rna,
                            const VVF& int_weight, const VF& aa_weight, const VF& rna_weight,
-                           VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip, float w /*=1.0*/) const
+                           VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip) const
 {
   const uint aa_len = x.size();
   const uint rna_len = y.size();
@@ -853,18 +418,18 @@ predict_interaction_object(const AA& aa, const RNA& rna,
 
   for (uint i=0; i!=aa_len; ++i)
     if (aa_weight[i]>0.0) {
-      x[i] = ip.make_variable(w*aa_weight[i]);
+      x[i] = ip.make_variable(aa_weight[i]);
       sl_x[i] = ip.make_variable(-exceed_penalty_, 0, MAX_INTERACTION);
     }
   for (uint j=0; j!=rna_len; ++j)
     if (rna_weight[j]>0.0) {
-      y[j] = ip.make_variable(w*rna_weight[j]);
+      y[j] = ip.make_variable(rna_weight[j]);
       sl_y[j] = ip.make_variable(-exceed_penalty_, 0, MAX_INTERACTION);
     }
   for (uint i=0; i!=aa_len; ++i)
     for (uint j=0; j!=rna_len; ++j)
       if (int_weight[i][j]>0.0)
-        z[i][j] = ip.make_variable(w*int_weight[i][j]);
+        z[i][j] = ip.make_variable(int_weight[i][j]);
 }
 
 void
@@ -947,8 +512,8 @@ predict_interaction_constraints(const AA& aa, const RNA& rna,
 
 float
 PRactIP::
-predict_interaction(const AA& aa, const RNA& rna,
-                    const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p, float w /*=1.0*/) const
+predict_interaction(const FeatureManager& fm, const AA& aa, const RNA& rna,
+                    const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const
 {
   const uint aa_len = int_weight.size();
   const uint rna_len = int_weight[0].size();
@@ -961,7 +526,7 @@ predict_interaction(const AA& aa, const RNA& rna,
   VI sl_x(aa_len, -1);            // slack variables for AA to relax some constraints
   VI sl_y(rna_len, -1);           // slack variables for RNA to relax some constraints
 
-  predict_interaction_object(aa, rna, int_weight, aa_weight, rna_weight, x, y, z, sl_x, sl_y, ip, w);
+  predict_interaction_object(aa, rna, int_weight, aa_weight, rna_weight, x, y, z, sl_x, sl_y, ip);
   ip.update();
   predict_interaction_constraints(aa, rna, x, y, z, sl_x, sl_y, ip);
   float s = ip.solve();
@@ -977,7 +542,7 @@ predict_interaction(const AA& aa, const RNA& rna,
 
 float
 PRactIP::
-predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna, VVVU& predicted_int)
+predict_common_interaction(const FeatureManager& fm, const Alignment<AA>& aa, const Alignment<RNA>& rna, VVVU& predicted_int)
 {
   const uint n_seq=aa.num_sequences();
   assert(n_seq==rna.num_sequences());
@@ -985,13 +550,13 @@ predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna, V
   VVVF int_weight(n_seq);
   VVF aa_weight(n_seq), rna_weight(n_seq);
   for (uint i=0; i!=n_seq; ++i)
-    calculate_feature_weight(aa.seq(i), rna.seq(i), int_weight[i], aa_weight[i], rna_weight[i]);
-  return predict_common_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
+    fm.calculate_feature_weight(aa.seq(i), rna.seq(i), int_weight[i], aa_weight[i], rna_weight[i]);
+  return predict_common_interaction(fm, aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
 }
 
 float
 PRactIP::
-predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna, 
+predict_common_interaction(const FeatureManager& fm, const Alignment<AA>& aa, const Alignment<RNA>& rna, 
                            const VVVF& int_weight, const VVF& aa_weight, const VVF& rna_weight, 
                            VVVU& predicted_int) const
 {
@@ -1014,7 +579,8 @@ predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna,
     sl_x[k].resize(aa_len, -1);
     sl_y[k].resize(rna_len, -1);
 
-    predict_interaction_object(aa.seq(k), rna.seq(k), int_weight[k], aa_weight[k], rna_weight[k], x[k], y[k], z[k], sl_x[k], sl_y[k], ip, mu_);
+    predict_interaction_object(aa.seq(k), rna.seq(k), int_weight[k], aa_weight[k], rna_weight[k], 
+                               x[k], y[k], z[k], sl_x[k], sl_y[k], ip);
   }
 
   VVI x_al(n_seq*(n_seq-1)/2, VI(aa.num_columns(), -1));
@@ -1219,11 +785,12 @@ run()
     if (cv_fold_>0) {
       cross_validation(cv_fold_);
     } else if (train_mode_){
+      FeatureManager fm(lambda_, eta0_);
       if (unlabeled_aa_.size()>0)
-        semisupervised_training();
+        semisupervised_training(fm);
       else
-        supervised_training();
-      store_parameters(param_file_.c_str());
+        supervised_training(fm);
+      fm.store_parameters(param_file_.c_str());
     }
   }
   else
@@ -1233,15 +800,16 @@ run()
       cmdline_parser_print_help();
       return 0;
     }
+    FeatureManager fm(lambda_, eta0_);
     if (param_file_.empty())
-      default_parameters();
+      fm.default_parameters();
     else
-      restore_parameters(param_file_.c_str());
+      fm.restore_parameters(param_file_.c_str());
 
     AA aa(args_[0], args_[1]); 
     RNA rna(args_[2], args_[3]);
     VVU predicted_int;
-    float s=predict_interaction(aa, rna, predicted_int);
+    float s=predict_interaction(fm, aa, rna, predicted_int);
     show_result(aa, rna, predicted_int, s);
   }
 

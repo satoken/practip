@@ -2,6 +2,7 @@
 #define _INC_RNA_H_
 
 #include <string>
+#include "typedef.h"
 
 struct RNA {
   std::string name;

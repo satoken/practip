@@ -2,6 +2,7 @@
 #define _INC_AA_H__
 
 #include <string>
+#include "typedef.h"
 
 struct AA {
   std::string name;
