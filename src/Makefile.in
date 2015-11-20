@@ -99,7 +99,8 @@ CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
-am_practip_OBJECTS = practip.$(OBJEXT) cmdline.$(OBJEXT) ip.$(OBJEXT)
+am_practip_OBJECTS = practip.$(OBJEXT) rna.$(OBJEXT) aa.$(OBJEXT) \
+	alignment.$(OBJEXT) cmdline.$(OBJEXT) ip.$(OBJEXT)
 practip_OBJECTS = $(am_practip_OBJECTS)
 practip_LDADD = $(LDADD)
 AM_V_P = $(am__v_P_@AM_V@)
@@ -265,7 +266,10 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-practip_SOURCES = practip.cpp practip.h cmdline.c cmdline.h ip.cpp ip.h typedef.h defparam.dat
+practip_SOURCES = \
+	practip.cpp practip.h rna.cpp rna.h aa.cpp aa.h alignment.cpp alignment.h \
+	cmdline.c cmdline.h ip.cpp ip.h typedef.h defparam.dat
+
 all: all-am
 
 .SUFFIXES:
@@ -352,9 +356,12 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/aa.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/alignment.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cmdline.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/ip.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/practip.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/rna.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
