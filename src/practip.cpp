@@ -162,9 +162,9 @@ load_labeled_data(const std::string& filename)
   std::cout << "loading labeled data" << std::endl;
   while (is >> aa_seq >> aa_ss >> rna_seq >> rna_ss >> matching) {
     std::cout << aa_seq << " " << aa_ss << " " << rna_seq << " " << rna_ss << " " << matching << std::endl;
-    labeled_aa_.push_back(AA());
+    labeled_aa_.emplace_back();
     uint aa_len=labeled_aa_.back().read(aa_seq, aa_ss);
-    labeled_rna_.push_back(RNA());
+    labeled_rna_.emplace_back();
     labeled_rna_.back().read(rna_seq, rna_ss);
     labeled_int_.emplace_back(aa_len);
     read_correct_interaction(matching, labeled_int_.back());
