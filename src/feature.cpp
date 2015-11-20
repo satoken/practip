@@ -1,6 +1,9 @@
+#include <algorithm>
 #include <iostream>
 #include <fstream>
 #include <cassert>
+#include <cstring>
+#include <cerrno>
 #include "feature.h"
 
 // Feature Groups
@@ -421,7 +424,6 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
       }
     }
   }
-
   epoch_++;
 }
 

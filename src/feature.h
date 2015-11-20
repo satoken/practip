@@ -11,7 +11,7 @@
 class FeatureManager
 {
 public:
-  FeatureManager(float lambda, float eata0);
+  FeatureManager(float lambda, float eta0);
 
   void store_parameters(const char* filename) const;
   void restore_parameters(const char* filename);
