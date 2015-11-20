@@ -42,10 +42,10 @@ private:
 
   float predict_interaction(const FeatureManager& fm, const AA& aa, const RNA& rna, VVU& predicted_int) const;
   float predict_interaction(const FeatureManager& fm, const AA& aa, const RNA& rna, 
-                            const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const;
+                            const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p, float mu) const;
   void predict_interaction_object(const AA& aa, const RNA& rna,
                                   const VVF& int_weight, const VF& aa_weight, const VF& rna_weight,
-                                  VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip) const;
+                                  VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip, float mu) const;
   void predict_interaction_constraints(const AA& aa, const RNA& rna,
                                        const VI& x, const VI& y, const VVI& z, const VI& sl_x, const VI& sl_y, 
                                        IP& ip) const;

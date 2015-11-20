@@ -191,7 +191,7 @@ calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight
 float
 PRactIP::
 supervised_training(FeatureManager& fm, const AA& aa, const RNA& rna, const VVU& correct_int,
-                    bool max_margin /*=true*/, float w /*=1.0*/)
+                    bool max_margin /*=true*/, float mu /*=1.0*/)
 {
   VVF int_weight;
   VF aa_weight, rna_weight;
@@ -201,7 +201,7 @@ supervised_training(FeatureManager& fm, const AA& aa, const RNA& rna, const VVU&
   if (max_margin)
     penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
   VVU predicted_int;
-  predict_interaction(fm, aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
+  predict_interaction(fm, aa, rna, int_weight, aa_weight, rna_weight, predicted_int, mu);
   float score_for_predict = calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
 
 #if 0
@@ -220,7 +220,7 @@ supervised_training(FeatureManager& fm, const AA& aa, const RNA& rna, const VVU&
   std::cout << std::endl;
 #endif  
 
-  fm.update_feature_weight(aa, rna, predicted_int, correct_int, w);
+  fm.update_feature_weight(aa, rna, predicted_int, correct_int, mu);
 
   return score_for_predict - score_for_correct;;
 }
@@ -359,7 +359,7 @@ predict_interaction(const FeatureManager& fm, const AA& aa, const RNA& rna, VVU&
   VVF int_weight;
   VF aa_weight, rna_weight;
   fm.calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
-  return predict_interaction(fm, aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
+  return predict_interaction(fm, aa, rna, int_weight, aa_weight, rna_weight, predicted_int, 1.0);
 }
 
 void
@@ -410,7 +410,7 @@ void
 PRactIP::
 predict_interaction_object(const AA& aa, const RNA& rna,
                            const VVF& int_weight, const VF& aa_weight, const VF& rna_weight,
-                           VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip) const
+                           VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip, float mu) const
 {
   const uint aa_len = x.size();
   const uint rna_len = y.size();
@@ -418,18 +418,18 @@ predict_interaction_object(const AA& aa, const RNA& rna,
 
   for (uint i=0; i!=aa_len; ++i)
     if (aa_weight[i]>0.0) {
-      x[i] = ip.make_variable(aa_weight[i]);
-      sl_x[i] = ip.make_variable(-exceed_penalty_, 0, MAX_INTERACTION);
+      x[i] = ip.make_variable(mu*aa_weight[i]);
+      sl_x[i] = ip.make_variable(-mu*exceed_penalty_, 0, MAX_INTERACTION);
     }
   for (uint j=0; j!=rna_len; ++j)
     if (rna_weight[j]>0.0) {
-      y[j] = ip.make_variable(rna_weight[j]);
-      sl_y[j] = ip.make_variable(-exceed_penalty_, 0, MAX_INTERACTION);
+      y[j] = ip.make_variable(mu*rna_weight[j]);
+      sl_y[j] = ip.make_variable(-mu*exceed_penalty_, 0, MAX_INTERACTION);
     }
   for (uint i=0; i!=aa_len; ++i)
     for (uint j=0; j!=rna_len; ++j)
       if (int_weight[i][j]>0.0)
-        z[i][j] = ip.make_variable(int_weight[i][j]);
+        z[i][j] = ip.make_variable(mu*int_weight[i][j]);
 }
 
 void
@@ -513,7 +513,7 @@ predict_interaction_constraints(const AA& aa, const RNA& rna,
 float
 PRactIP::
 predict_interaction(const FeatureManager& fm, const AA& aa, const RNA& rna,
-                    const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p) const
+                    const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p, float mu) const
 {
   const uint aa_len = int_weight.size();
   const uint rna_len = int_weight[0].size();
@@ -526,7 +526,7 @@ predict_interaction(const FeatureManager& fm, const AA& aa, const RNA& rna,
   VI sl_x(aa_len, -1);            // slack variables for AA to relax some constraints
   VI sl_y(rna_len, -1);           // slack variables for RNA to relax some constraints
 
-  predict_interaction_object(aa, rna, int_weight, aa_weight, rna_weight, x, y, z, sl_x, sl_y, ip);
+  predict_interaction_object(aa, rna, int_weight, aa_weight, rna_weight, x, y, z, sl_x, sl_y, ip, mu);
   ip.update();
   predict_interaction_constraints(aa, rna, x, y, z, sl_x, sl_y, ip);
   float s = ip.solve();
@@ -580,7 +580,7 @@ predict_common_interaction(const FeatureManager& fm, const Alignment<AA>& aa, co
     sl_y[k].resize(rna_len, -1);
 
     predict_interaction_object(aa.seq(k), rna.seq(k), int_weight[k], aa_weight[k], rna_weight[k], 
-                               x[k], y[k], z[k], sl_x[k], sl_y[k], ip);
+                               x[k], y[k], z[k], sl_x[k], sl_y[k], ip, mu_);
   }
 
   VVI x_al(n_seq*(n_seq-1)/2, VI(aa.num_columns(), -1));
