@@ -349,7 +349,7 @@ semisupervised_training(FeatureManager& fm, const VU& use_idx)
     }
   }
 
-  fm.regularization_fobos();
+  fm.regularization();
 }
 
 float
@@ -731,7 +731,9 @@ parse_options(int& argc, char**& argv)
   if (args_info.train_given)
   {
     train_mode_ = true;
-    param_file_ = args_info.train_arg;
+    out_file_ = args_info.train_arg;
+    if (args_info.init_given)
+      param_file_ = args_info.init_arg;
   }
   else if (args_info.predict_given)
   {
@@ -786,11 +788,13 @@ run()
       cross_validation(cv_fold_);
     } else if (train_mode_){
       FeatureManager fm(lambda_, eta0_);
+      if (!param_file_.empty())
+        fm.restore_parameters(param_file_.c_str());
       if (unlabeled_aa_.size()>0)
         semisupervised_training(fm);
       else
         supervised_training(fm);
-      fm.store_parameters(param_file_.c_str());
+      fm.store_parameters(out_file_.c_str());
     }
   }
   else

@@ -203,8 +203,9 @@ store_parameters(const char* filename) const
     os << "[ " << groupname[k] << " weight ]" << std::endl;
     for (const auto& e : feature_weight_[k])
     {
+      assert(e.second.last_updated==epoch_);
       if (e.second.weight!=0.0)
-        os << e.first << " " << e.second.weight << std::endl;
+        os << e.first << " " << e.second.weight << " " << e.second.sum_squared_grad << std::endl;
     }
     os << std::endl;
   }
@@ -221,14 +222,14 @@ restore_parameters(const char* filename)
     f.clear();
 
   uint k=-1u;
-  std::string first, second;
-  while (is >> first >> second)
+  std::string first, second, third;
+  while (is >> first >> second >> third)
   {
     if (first=="[")             // group name
     {
       //std::cout << second << std::endl;
-      std::string temp1, temp2;
-      is >> temp1 >> temp1;
+      std::string temp;
+      is >> temp; // "]"
       auto p = std::find(std::begin(groupname), std::end(groupname), second);
       if (p!=std::end(groupname))
         k = p - std::begin(groupname);
@@ -237,7 +238,9 @@ restore_parameters(const char* filename)
     }
     else if (k!=-1u)
     {
-      feature_weight_[k][first].weight = std::atof(second.c_str());
+      auto& e = feature_weight_[k][first];
+      e.weight = std::atof(second.c_str());
+      e.sum_squared_grad = std::atof(third.c_str());
     }
   }
 }
@@ -285,7 +288,7 @@ calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_w
       extract_int_feature(aa, rna, i, j, 
                           [&](uint fgroup, const char* fname, uint i, uint j) 
                           {
-                            int_weight[i][j] += update_fobos(fgroup, fname);
+                            int_weight[i][j] += lazy_update(fgroup, fname);
                           }
         );
     }
@@ -298,7 +301,7 @@ calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_w
     extract_aa_feature(aa, i,
                        [&](uint fgroup, const char* fname, uint i) 
                        {
-                         aa_weight[i] += update_fobos(fgroup, fname);
+                         aa_weight[i] += lazy_update(fgroup, fname);
                        }
       );
   }
@@ -310,7 +313,7 @@ calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_w
     extract_rna_feature(rna, j, 
                         [&](uint fgroup, const char* fname, uint j) 
                         {
-                          rna_weight[j] += update_fobos(fgroup, fname);
+                          rna_weight[j] += lazy_update(fgroup, fname);
                         }
       );
   }
@@ -409,16 +412,16 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
     {
       if (e.second!=0)
       {
-        auto fe = feature_weight_[k].insert(std::make_pair(e.first, FeatureManager::FeatureWeight())).first;
-        fe->second.weight -= w*e.second * eta0_/std::sqrt(1.0+fe->second.sum_of_grad2);
-        fe->second.sum_of_grad2 += w*e.second * w*e.second;
+        auto fe = feature_weight_[k].insert(std::make_pair(e.first, FeatureWeight())).first;
+        fe->second.weight -= w*e.second * eta0_/std::sqrt(1.0+fe->second.sum_squared_grad);
+        fe->second.sum_squared_grad += w*e.second * w*e.second;
 #if 0
         std::cerr << epoch << ", "
                   << k << ", "
                   << it->first << ", "
                   << it->second << ", "
                   << fe->second.weight << ", "
-                  << eta0_/std::sqrt(1.0+fe->second.sum_of_grad2) << std::endl;
+                  << eta0_/std::sqrt(1.0+fe->second.sum_squared_grad) << std::endl;
 #endif
         //assert(fe->second.last_updated == epoch);
       }
@@ -439,27 +442,32 @@ clip(float w, float c)
 
 float
 FeatureManager::
-update_fobos(uint fgroup, const char* fname) const
+lazy_update(FeatureWeight& f) const
+{
+  // lazy update for FOBOS
+  if (f.last_updated<epoch_) 
+  {
+    const float eta = eta0_/std::sqrt(1.0+f.sum_squared_grad);
+    const uint t = epoch_ - f.last_updated;
+    f.weight = clip(f.weight, lambda_*eta*t);
+    f.last_updated = epoch_;
+  }
+  return f.weight;
+}
+
+float
+FeatureManager::
+lazy_update(uint fgroup, const char* fname) const
 {
   auto m=feature_weight_[fgroup].find(fname);
   if (m!=feature_weight_[fgroup].end())
-  {
-    // lazy update for FOBOS
-    if (m->second.last_updated<epoch_)
-    {
-      const float eta = eta0_/std::sqrt(1.0+m->second.sum_of_grad2);
-      const uint t = epoch_ - m->second.last_updated;
-      m->second.weight = clip(m->second.weight, lambda_*eta*t);
-      m->second.last_updated = epoch_;
-    }
-    return m->second.weight;
-  }
+    return lazy_update(m->second);
   return 0.0;
 }
 
 float
 FeatureManager::
-regularization_fobos() const
+regularization() const
 {
   // L1-norm
   float sum1=0.0;
@@ -467,14 +475,8 @@ regularization_fobos() const
   {
     for (auto& e : feature_weight_[k])
     {
-      if (e.second.last_updated<epoch_)
-      {
-        const float eta = eta0_/std::sqrt(1.0+e.second.sum_of_grad2);
-        const uint t = epoch_ - e.second.last_updated;
-        e.second.weight = clip(e.second.weight, lambda_*eta*t);
-        e.second.last_updated = epoch_;
-      }
-      sum1 += std::abs(e.second.weight);
+      auto w = lazy_update(e.second);
+      sum1 += std::abs(w);
     }
   }
   return lambda_ * sum1;

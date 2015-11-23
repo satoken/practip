@@ -51,6 +51,9 @@ struct gengetopt_args_info
   int cross_validation_arg;	/**< @brief Perform the n-fold cross validation (default='0').  */
   char * cross_validation_orig;	/**< @brief Perform the n-fold cross validation original value given at command line.  */
   const char *cross_validation_help; /**< @brief Perform the n-fold cross validation help description.  */
+  char * init_arg;	/**< @brief initial parameters for training.  */
+  char * init_orig;	/**< @brief initial parameters for training original value given at command line.  */
+  const char *init_help; /**< @brief initial parameters for training help description.  */
   float eta_arg;	/**< @brief Initial step width for the subgradient optimization (default='0.5').  */
   char * eta_orig;	/**< @brief Initial step width for the subgradient optimization original value given at command line.  */
   const char *eta_help; /**< @brief Initial step width for the subgradient optimization help description.  */
@@ -91,6 +94,7 @@ struct gengetopt_args_info
   unsigned int train_given ;	/**< @brief Whether train was given.  */
   unsigned int predict_given ;	/**< @brief Whether predict was given.  */
   unsigned int cross_validation_given ;	/**< @brief Whether cross-validation was given.  */
+  unsigned int init_given ;	/**< @brief Whether init was given.  */
   unsigned int eta_given ;	/**< @brief Whether eta was given.  */
   unsigned int pos_w_given ;	/**< @brief Whether pos-w was given.  */
   unsigned int neg_w_given ;	/**< @brief Whether neg-w was given.  */

@@ -67,6 +67,7 @@ private:
   std::vector<Alignment<RNA>> unlabeled_rna_;
   
   bool train_mode_;
+  std::string out_file_;
   std::string param_file_;
   float pos_w_;
   float neg_w_;
