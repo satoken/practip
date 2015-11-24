@@ -204,8 +204,12 @@ store_parameters(const char* filename) const
     for (const auto& e : feature_weight_[k])
     {
       assert(e.second.last_updated==epoch_);
+#if 0
       if (e.second.weight!=0.0)
         os << e.first << " " << e.second.weight << " " << e.second.sum_squared_grad << std::endl;
+#else
+      os << e.first << " " << e.second.weight << " " << e.second.sum_squared_grad << std::endl;
+#endif
     }
     os << std::endl;
   }

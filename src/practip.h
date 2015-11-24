@@ -40,23 +40,6 @@ private:
 
   void penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const;
 
-  float predict_interaction(const FeatureManager& fm, const AA& aa, const RNA& rna, VVU& predicted_int) const;
-  float predict_interaction(const FeatureManager& fm, const AA& aa, const RNA& rna, 
-                            const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p, float mu) const;
-  void predict_interaction_object(const AA& aa, const RNA& rna,
-                                  const VVF& int_weight, const VF& aa_weight, const VF& rna_weight,
-                                  VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip, float mu) const;
-  void predict_interaction_constraints(const AA& aa, const RNA& rna,
-                                       const VI& x, const VI& y, const VVI& z, const VI& sl_x, const VI& sl_y, 
-                                       IP& ip) const;
-
-  float predict_common_interaction(const FeatureManager& fm, const Alignment<AA>& aa, const Alignment<RNA>& rna, VVVU& predicted_int);
-  float predict_common_interaction(const FeatureManager& fm, const Alignment<AA>& aa, const Alignment<RNA>& rna, 
-                                   const VVVF& int_weight, const VVF& aa_weight, const VVF& rna_weight, 
-                                   VVVU& predicted_int) const;
-
-  float calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, const VVU& interactions) const;
-
   void show_result(const AA& aa, const RNA& rna, const VVU& predicted_int, float score) const;
 
 private:
@@ -75,11 +58,12 @@ private:
   float mu_;
   float nu_;
   float eta0_;
-  float exceed_penalty_;
-  uint n_th_;
   uint d_max_;
   uint g_max_;
   uint cv_fold_;
+
+  float exceed_penalty_;
+  uint n_th_;
   uint aa_int_max_;
   uint rna_int_max_;
   std::vector<std::string> args_;
