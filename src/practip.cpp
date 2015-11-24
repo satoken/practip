@@ -272,6 +272,13 @@ cross_validation(uint n)
     }
 
     std::cout << "[Set " << i << "]" << std::endl;
+#if 0
+    for (auto f : feature_weight_) 
+      f.clear();                // it doesn't work?
+#else
+    feature_weight_.resize(0);
+    feature_weight_.resize(FG_NUM);
+#endif
     semisupervised_training(train);
 
     for (auto j : test) {
