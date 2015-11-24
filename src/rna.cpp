@@ -52,7 +52,6 @@ read_fa(const std::string& fa_name)
     else
       this->seq+=line;
   }
-  ifs.close();
 
   return this->seq.size();
 }
@@ -100,7 +99,7 @@ read_ss(const std::string& ss_name)
 
   std::getline(ifs, line);      // this is the header;
   std::getline(ifs, line);      // this is the sequence.
-  std::getline(ifs, line);      // this is the secondary structure
+  ifs >> line;                  // this is the secondary structure
   structural_profile(line, ss);
 
   return ss.size();
