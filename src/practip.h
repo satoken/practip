@@ -136,25 +136,34 @@ private:
   void restore_parameters(const char* filename);
   void default_parameters();
 
-  void supervised_training() { semisupervised_training(); }
-  void supervised_training(const VU& use_idx) { semisupervised_training(use_idx); }
-  float supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin=true, float w=1.0);
+  void supervised_training();
+  void supervised_training(const VU& use_idx); 
   void semisupervised_training();
   void semisupervised_training(const VU& use_idx);
-
   void cross_validation(uint n);
 
+  float supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin=true, float w=1.0)
+  {
+    auto [loss, gr] = calculate_loss(aa, rna, correct_int, max_margin);
+    update_feature_weight(gr, w);
+    return loss;
+  }
+  auto calculate_loss(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin=true) const -> std::pair<float, std::vector<std::unordered_map<std::string, int>>>;
 
   template < class Func > void extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func func) const;
+  template < class Func > void extract_int_feature(const AA& aa, const RNA& rna, Func func) const;
   template < class Func > void extract_aa_feature(const AA& aa, uint i, Func func) const;
+  template < class Func > void extract_aa_feature(const AA& aa, Func func) const;
   template < class Func > void extract_rna_feature(const RNA& rna, uint j, Func func) const;
+  template < class Func > void extract_rna_feature(const RNA& rna, Func func) const;
 
   void read_correct_interaction(const std::string& filename, VVU& correct_int) const; 
-  void calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight);
+  auto calculate_feature_weight(const AA& aa, const RNA& rna) const -> std::tuple<VVF, VF, VF>;
   void penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const;
-  void update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int, float w=1.0);
+  auto calculate_feature_grad(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int) const -> std::vector<std::unordered_map<std::string, int>>;
+  void update_feature_weight(const std::vector<std::unordered_map<std::string, int>>& gr, float w=1.0);
 
-  float update_fobos(uint fgroup, const char* fname);
+  float update_fobos(uint fgroup, const char* fname) const;
   float regularization_fobos();
 
   float predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int, float w=1.0);
@@ -182,7 +191,7 @@ private:
   std::vector<Alignment<AA>> unlabeled_aa_;
   std::vector<Alignment<RNA>> unlabeled_rna_;
   
-  std::vector<FM> feature_weight_;
+  mutable std::vector<FM> feature_weight_;
   std::vector<bool> use_feature_;
 
   bool train_mode_;

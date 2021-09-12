@@ -6,6 +6,7 @@
 #include <stack>
 #include <functional>
 #include <numeric>
+#include <chrono>
 #include <getopt.h>
 #include <cstring>
 #include <cstdlib>
@@ -16,7 +17,7 @@
 
 #include "ip.h"
 #include "practip.h"
-#include "cmdline.h"
+#include "cxxopts.hpp"
 
 //static
 uint PRactIP::epoch = 0;
@@ -221,20 +222,25 @@ calculate_score(const VVF& int_weight, const VF& aa_weight, const VF& rna_weight
 }
 
 
-float
+auto
 PRactIP::
-supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin /*=true*/, float w /*=1.0*/)
+calculate_loss(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin /*=true*/) const
+  -> std::pair<float, std::vector<std::unordered_map<std::string, int>>>
 {
+  auto t1 = std::chrono::system_clock::now();
   float loss=0.0;
-  VVF int_weight;
-  VF aa_weight, rna_weight;
-  calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
+  auto [int_weight, aa_weight, rna_weight] = calculate_feature_weight(aa, rna);
   loss -= calculate_score(int_weight, aa_weight, rna_weight, correct_int);
   if (max_margin)
     penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
+  auto t2 = std::chrono::system_clock::now();
+
+  auto t3 = std::chrono::system_clock::now();
   VVU predicted_int;
   predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
   loss += calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
+  auto t4 = std::chrono::system_clock::now();
+  //std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() << std::endl;
 #if 0
   for (uint i=0; i!=correct_int.size(); ++i) {
     if (!correct_int[i].empty() || !predicted_int[i].empty())
@@ -250,9 +256,17 @@ supervised_training(const AA& aa, const RNA& rna, const VVU& correct_int, bool m
   }
   std::cout << std::endl;
 #endif  
-  update_feature_weight(aa, rna, predicted_int, correct_int, w);
+  auto t5 = std::chrono::system_clock::now();
+  auto gr = calculate_feature_grad(aa, rna, predicted_int, correct_int);
+  //update_feature_weight(gr, w);
+  auto t6 = std::chrono::system_clock::now();
 
-  return loss;
+  std::cout << aa.name << " " << aa.seq.size() << " "
+            << rna.name << " " << rna.seq.size() << " "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() << " " 
+            << std::chrono::duration_cast<std::chrono::milliseconds>(t4-t3).count() << " " 
+            << std::chrono::duration_cast<std::chrono::milliseconds>(t6-t5).count() << std::endl;
+  return {loss, gr};
 }
 
 void
@@ -279,7 +293,7 @@ cross_validation(uint n)
     feature_weight_.resize(0);
     feature_weight_.resize(FG_NUM);
 #endif
-    semisupervised_training(train);
+    supervised_training(train);
 
     for (auto j : test) {
       VVU predicted_int;
@@ -324,11 +338,42 @@ cross_validation(uint n)
 
 void
 PRactIP::
+supervised_training()
+{
+  VU idx(labeled_aa_.size());
+  std::iota(std::begin(idx), std::end(idx), 0);
+  supervised_training(idx);
+}
+
+void
+PRactIP::
 semisupervised_training()
 {
   VU idx(labeled_aa_.size());
   std::iota(std::begin(idx), std::end(idx), 0);
   semisupervised_training(idx);
+}
+
+void
+PRactIP::
+supervised_training(const VU& use_idx)
+{
+  epoch=0;
+  // initial supervised learning
+  VU idx(use_idx);
+  for (uint t=0; t!=d_max_; ++t) {
+    float total_loss=0.0;
+    std::random_shuffle(std::begin(idx), std::end(idx)); // shuffle the order of training data
+    for (auto i : idx) {
+      auto [loss, gr] = calculate_loss(labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
+      update_feature_weight(gr, 1.);
+      total_loss += loss;
+      epoch++;
+      //std::cout << t << " " << epoch << " " << loss << std::endl;
+    }
+  }
+
+  regularization_fobos();
 }
 
 void
@@ -395,9 +440,7 @@ float
 PRactIP::
 predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int, float w /*=1.0*/)
 {
-  VVF int_weight;
-  VF aa_weight, rna_weight;
-  calculate_feature_weight(aa, rna, int_weight, aa_weight, rna_weight);
+  auto [int_weight, aa_weight, rna_weight] = calculate_feature_weight(aa, rna);
   return predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int, w);
 }
 
@@ -470,6 +513,51 @@ extract_int_feature(const AA& aa, const RNA& rna, uint i, uint j, Func func) con
 template < class Func >
 void
 PRactIP::
+extract_int_feature(const AA& aa, const RNA& rna, Func func) const
+{
+  struct {
+    uint id;
+    const char* aa_str;
+    uint aa_w;
+    const char* rna_str;
+    uint rna_w;
+  } features[] = {
+    { FG_P_3_R_3,      aa.seq.c_str(), 1, rna.seq.c_str(), 1 },
+    { FG_P_5_R_5,      aa.seq.c_str(), 2, rna.seq.c_str(), 2 },
+    { FG_Pss_3_Rss_3,  aa.ss.c_str(),  1, rna.ss.c_str(),  1 },
+    { FG_Pss_5_Rss_5,  aa.ss.c_str(),  2, rna.ss.c_str(),  2 },
+    { FG_Pg10_3_R_3,   aa.g10.c_str(), 1, rna.seq.c_str(), 1 },
+    { FG_Pg10_3_Rss_3, aa.g10.c_str(), 1, rna.ss.c_str(),  1 },
+    { FG_Pg10_5_R_5,   aa.g10.c_str(), 2, rna.seq.c_str(), 2 },
+    { FG_Pg10_5_Rss_5, aa.g10.c_str(), 2, rna.ss.c_str(),  2 },
+    { FG_Pg4_3_R_3,    aa.g4.c_str(),  1, rna.seq.c_str(), 1 },
+    { FG_Pg4_3_Rss_3,  aa.g4.c_str(),  1, rna.ss.c_str(),  1 },
+    { FG_Pg4_5_R_5,    aa.g4.c_str(),  2, rna.seq.c_str(), 2 },
+    { FG_Pg4_5_Rss_5,  aa.g4.c_str(),  2, rna.ss.c_str(),  2 },
+    { -1u, nullptr, 0, nullptr, 0 }
+  };
+  
+  const auto rna_len=rna.seq.size();
+  const auto aa_len=aa.seq.size();
+  char buf[20];
+  for (auto i=0; i!=aa_len; ++i) {
+    for (auto j=0; j!=rna_len; ++j) {
+      for (uint k=0; features[k].id!=-1u; ++k) {
+        if (use_feature_[features[k].id]) {
+          feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf);
+          buf[features[k].aa_w*2+1]=',';
+          feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf+features[k].aa_w*2+2);
+          func(features[k].id, buf, i, j);
+          //std::cout << features[k].id << " " << buf << std::endl;
+        }
+      }
+    }
+  }
+}
+
+template < class Func >
+void
+PRactIP::
 extract_aa_feature(const AA& aa, uint i, Func func) const
 {
   struct {
@@ -503,6 +591,41 @@ extract_aa_feature(const AA& aa, uint i, Func func) const
 template < class Func >
 void
 PRactIP::
+extract_aa_feature(const AA& aa, Func func) const
+{
+  struct {
+    uint id;
+    const char* aa_str;
+    uint aa_w;
+  } features[] = {
+    { FG_P_3,    aa.seq.c_str(), 1 },
+    { FG_P_5,    aa.seq.c_str(), 2 },
+    { FG_Pss_3,  aa.ss.c_str(),  1 },
+    { FG_Pss_5,  aa.ss.c_str(),  2 },
+    { FG_Pg10_5, aa.g10.c_str(), 2 },
+    { FG_Pg10_7, aa.g10.c_str(), 3 },
+    { FG_Pg4_5,  aa.g4.c_str(),  2 },
+    { FG_Pg4_7,  aa.g4.c_str(),  3 },
+    { -1u, nullptr, 0 }
+  };
+  
+  const auto aa_len=aa.seq.size();
+  char buf[20];
+
+  for (auto i=0; i!=aa_len; ++i) {
+    for (uint k=0; features[k].id!=-1u; ++k) {
+      if (use_feature_[features[k].id]) {
+        feature_string(features[k].aa_str, aa_len, i, features[k].aa_w, buf);
+        func(features[k].id, buf, i);
+        //std::cout << features[k].id << " " << buf << std::endl;
+      }
+    }
+  }
+}
+
+template < class Func >
+void
+PRactIP::
 extract_rna_feature(const RNA& rna, uint j, Func func) const
 {
   struct {
@@ -525,6 +648,37 @@ extract_rna_feature(const RNA& rna, uint j, Func func) const
       feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf);
       func(features[k].id, buf, j);
       //std::cout << features[k].id << " " << buf << std::endl;
+    }
+  }
+}
+
+template < class Func >
+void
+PRactIP::
+extract_rna_feature(const RNA& rna, Func func) const
+{
+  struct {
+    uint id;
+    const char* rna_str;
+    uint rna_w;
+  } features[] = {
+    { FG_R_3,   rna.seq.c_str(), 1 },
+    { FG_R_5,   rna.seq.c_str(), 2 },
+    { FG_Rss_3, rna.ss.c_str(),  1 },
+    { FG_Rss_5, rna.ss.c_str(),  2 },
+    { -1u, nullptr, 0 }
+  };
+  
+  const auto rna_len=rna.seq.size();
+  char buf[20];
+
+  for (auto j=0; j!=rna_len; ++j) {
+    for (uint k=0; features[k].id!=-1u; ++k) {
+      if (use_feature_[features[k].id]) {
+        feature_string(features[k].rna_str, rna_len, j, features[k].rna_w, buf);
+        func(features[k].id, buf, j);
+        //std::cout << features[k].id << " " << buf << std::endl;
+      }
     }
   }
 }
@@ -608,49 +762,37 @@ default_parameters()
   }
 }
 
-void
+auto
 PRactIP::
-calculate_feature_weight(const AA& aa, const RNA& rna, VVF& int_weight, VF& aa_weight, VF& rna_weight)
+calculate_feature_weight(const AA& aa, const RNA& rna) const
+  -> std::tuple<VVF, VF, VF>
 {
-  int_weight.resize(aa.seq.size());
-  for (uint i=0; i!=int_weight.size(); ++i) 
-  {
-    int_weight[i].resize(rna.seq.size());
-    for (uint j=0; j!=int_weight[i].size(); ++j) 
+  VVF int_weight(aa.seq.size(), VF(rna.seq.size(), 0.0));
+  VF aa_weight(aa.seq.size(), 0.0);
+  VF rna_weight(rna.seq.size(), 0.0);
+
+  extract_int_feature(aa, rna,
+    [&](uint fgroup, const char* fname, uint i, uint j) 
     {
-      int_weight[i][j] = 0.0;
-      extract_int_feature(aa, rna, i, j, 
-                          [&](uint fgroup, const char* fname, uint i, uint j) 
-                          {
-                            int_weight[i][j] += update_fobos(fgroup, fname);
-                          }
-        );
+      int_weight[i][j] += update_fobos(fgroup, fname);
     }
-  }
+  );
 
-  aa_weight.resize(aa.seq.size());
-  for (uint i=0; i!=aa_weight.size(); ++i) 
-  {
-    aa_weight[i] = 0.0;
-    extract_aa_feature(aa, i,
-                       [&](uint fgroup, const char* fname, uint i) 
-                       {
-                         aa_weight[i] += update_fobos(fgroup, fname);
-                       }
-      );
-  }
+  extract_aa_feature(aa,
+    [&](uint fgroup, const char* fname, uint i) 
+    {
+      aa_weight[i] += update_fobos(fgroup, fname);
+    }
+  );
 
-  rna_weight.resize(rna.seq.size());
-  for (uint j=0; j!=rna_weight.size(); ++j) 
-  {
-    rna_weight[j] = 0.0;
-    extract_rna_feature(rna, j, 
-                        [&](uint fgroup, const char* fname, uint j) 
-                        {
-                          rna_weight[j] += update_fobos(fgroup, fname);
-                        }
-      );
-  }
+  extract_rna_feature(rna, 
+    [&](uint fgroup, const char* fname, uint j) 
+    {
+      rna_weight[j] += update_fobos(fgroup, fname);
+    }
+  );
+
+  return {int_weight, aa_weight, rna_weight};
 }
 
 void
@@ -687,36 +829,37 @@ penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, con
       rna_weight[j] -= pos_w_+neg_w_;
 }
 
-void
+auto
 PRactIP::
-update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int, float w /*=1.0*/)
+calculate_feature_grad(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int) const 
+  -> std::vector<std::unordered_map<std::string, int>>
 {
   assert(predicted_int.size()==correct_int.size());
 
   // calculate gradients in correct interactions
   //   interactions
-  typedef std::unordered_map<std::string,int> GM;
+  using GM = std::unordered_map<std::string, int>;
   std::vector<GM> gr(FG_NUM);
   for (uint i=0; i!=correct_int.size(); ++i)
     for (auto j : correct_int[i])
     {
       extract_int_feature(aa, rna, i, j,
-                          [&] (uint fgroup, const char* fname, uint i, uint j)
-                          {
-                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
-                          }
-        );
+        [&] (uint fgroup, const char* fname, uint i, uint j)
+        {
+          gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
+        }
+      );
     }
   //   amino acids
   for (uint i=0; i!=correct_int.size(); ++i)
     if (!correct_int[i].empty())
     {
       extract_aa_feature(aa, i, 
-                         [&] (uint fgroup, const char* fname, uint i)
-                         {
-                           gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
-                         }
-        );
+        [&] (uint fgroup, const char* fname, uint i)
+        {
+          gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
+        }
+      );
     }
   //   RNAs
   std::vector<bool> rna_has_int(rna.seq.size(), false);
@@ -727,11 +870,11 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
     if (rna_has_int[j])
     {
       extract_rna_feature(rna, j, 
-                          [&] (uint fgroup, const char* fname, uint j)
-                          {
-                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
-                          }
-        );
+        [&] (uint fgroup, const char* fname, uint j)
+        {
+          gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += -1;
+        }
+      );
     }
 
   // calculate gradients in predicted interactions
@@ -740,22 +883,22 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
     for (auto j : predicted_int[i])
     {
       extract_int_feature(aa, rna, i, j, 
-                          [&] (uint fgroup, const char* fname, uint i, uint j)
-                          {
-                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
-                          }
-        );
+        [&] (uint fgroup, const char* fname, uint i, uint j)
+        {
+          gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
+        }
+      );
     }
   //   amino acids
   for (uint i=0; i!=predicted_int.size(); ++i)
     if (!predicted_int[i].empty())
     {
       extract_aa_feature(aa, i, 
-                         [&] (uint fgroup, const char* fname, uint i)
-                         {
-                           gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
-                         }
-        );
+        [&] (uint fgroup, const char* fname, uint i)
+        {
+          gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
+        }
+      );
     }
   //   RNAs
   std::fill(rna_has_int.begin(), rna_has_int.end(), false);
@@ -766,15 +909,22 @@ update_feature_weight(const AA& aa, const RNA& rna, const VVU& predicted_int, co
     if (rna_has_int[j])
     {
       extract_rna_feature(rna, j, 
-                          [&] (uint fgroup, const char* fname, uint j)
-                          {
-                            gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
-                          }
-        );
+        [&] (uint fgroup, const char* fname, uint j)
+        {
+          gr[fgroup].insert(std::make_pair(std::string(fname), 0)).first->second += +1;
+        }
+      );
     }
 
+  return gr;
+}
+
+void
+PRactIP::
+update_feature_weight(const std::vector<std::unordered_map<std::string, int>>& gr, float w /*=1.0*/)
+{
   // update feature weights by AdaGrad
-  for (uint k=0; k!=gr.size(); ++k)
+  for (auto k=0; k!=gr.size(); ++k)
   {
     for (const auto& e : gr[k])
     {
@@ -809,7 +959,7 @@ clip(float w, float c)
 
 float
 PRactIP::
-update_fobos(uint fgroup, const char* fname)
+update_fobos(uint fgroup, const char* fname) const
 {
   auto m=feature_weight_[fgroup].find(fname);
   if (m!=feature_weight_[fgroup].end())
@@ -994,7 +1144,7 @@ predict_common_interaction(const Alignment<AA>& aa, const Alignment<RNA>& rna, V
   VVVF int_weight(n_seq);
   VVF aa_weight(n_seq), rna_weight(n_seq);
   for (uint i=0; i!=n_seq; ++i)
-    calculate_feature_weight(aa.seq(i), rna.seq(i), int_weight[i], aa_weight[i], rna_weight[i]);
+    std::tie(int_weight[i], aa_weight[i], rna_weight[i]) = calculate_feature_weight(aa.seq(i), rna.seq(i));
   return predict_common_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
 }
 
@@ -1591,48 +1741,69 @@ PRactIP&
 PRactIP::
 parse_options(int& argc, char**& argv)
 {
-  gengetopt_args_info args_info;
-  if (cmdline_parser(argc, argv, &args_info)!=0) exit(1);
+  cxxopts::Options options(argv[0], "PRactIP: Protein-RNA intACTion using Integer Programming.");
+  options.add_options()
+    ("h,help", "Print usage")
+    ("input", "Input file", cxxopts::value<std::vector<std::string>>(), "FILE")
+    ("t,threads", "The number of threads for IP solver", cxxopts::value<int>()->default_value("1"), "N")
+    ("train", "Train the parameters from given data", cxxopts::value<std::string>(), "PARAMFILE")
+    ("predict", "Predict interactions", cxxopts::value<std::string>(), "PARAMFILE")
+    ("c,cross-validation", "Perform the n-fold cross validation", cxxopts::value<int>()->default_value("0"), "N")
+    ("e,eta", "Initial step width for the subgradient optimization", cxxopts::value<float>()->default_value("0.5"))
+    ("w,pos-w", "The weight for positive interactions", cxxopts::value<float>()->default_value("4"))
+    ("neg-w", "The weight for negative interactions", cxxopts::value<float>()->default_value("1"))
+    ("D,lambda", "The weight for the L1 regularization term", cxxopts::value<float>()->default_value("0.125"))
+    ("mu", "The weight for semi-supervised objective", cxxopts::value<float>()->default_value("0.5"))
+    ("nu", "The weight for the graph regularization term for semi-supervised learning", cxxopts::value<float>()->default_value("1.0"))
+    ("d,d-max", "The maximim number of iterations of the supervised learning", cxxopts::value<int>()->default_value("25"))
+    ("g,g-max", "The maximum number of iterations of the semi-supervised learning", cxxopts::value<int>()->default_value("5"))
+    ("aa-int-max", "The maximum number of interations of each amino acid", cxxopts::value<int>()->default_value("3"))
+    ("rna-int-max", "The maximum number of interations of each nucleotide", cxxopts::value<int>()->default_value("4"))
+    ("exceeding-penalty", "The penalty for exceeding the limit of the number of interactions for each residue/base", cxxopts::value<float>()->default_value("0.5"));
+  options.parse_positional({"input"});
+  options.positional_help("FILE").show_positional_help();
 
-  if (args_info.train_given)
+  auto res = options.parse(argc, argv);
+  if (res.count("help")) {
+    std::cout << options.help() << std::endl;
+    exit(0);
+  }
+
+  if (res.count("train"))
   {
     train_mode_ = true;
-    param_file_ = args_info.train_arg;
+    param_file_ = res["train"].as<std::string>();
   }
-  else if (args_info.predict_given)
+  else if (res.count("predict"))
   {
     train_mode_ = false;
-    param_file_ = args_info.predict_arg;
+    param_file_ = res["predict"].as<std::string>();
   }
-  pos_w_ = args_info.pos_w_arg;
-  neg_w_ = args_info.neg_w_arg;
-  lambda_ = args_info.lambda_arg;
-  mu_ = args_info.mu_arg;
-  nu_ = args_info.nu_arg;
-  eta0_ = args_info.eta_arg;
-  d_max_ = args_info.d_max_arg;
-  g_max_ = args_info.g_max_arg;
-  cv_fold_ = args_info.cross_validation_arg;
-  exceed_penalty_ = args_info.exceeding_penalty_arg;
-  if (args_info.aa_int_max_given)
-    aa_int_max_ = args_info.aa_int_max_arg;
-  if (args_info.rna_int_max_given)
-    rna_int_max_ = args_info.rna_int_max_arg;
-  if (args_info.threads_given)
-    n_th_ = args_info.threads_arg;
-  
-  if (args_info.inputs_num==0)
-  {
-    cmdline_parser_print_help();
-    cmdline_parser_free(&args_info);
-    exit(1);
+  pos_w_ = res["pos-w"].as<float>();
+  neg_w_ = res["neg-w"].as<float>();
+  lambda_ = res["lambda"].as<float>();
+  mu_ = res["mu"].as<float>();
+  nu_ = res["nu"].as<float>();
+  eta0_ = res["eta"].as<float>();
+  d_max_ = res["d-max"].as<int>();
+  g_max_ = res["g-max"].as<int>();
+  cv_fold_ = res["cross-validation"].as<int>();
+  exceed_penalty_ = res["exceeding-penalty"].as<float>();
+  if (res["aa-int-max"].count())
+    aa_int_max_ = res["aa-int-max"].as<int>();
+  if (res["rna-int-max"].count())
+    rna_int_max_ = res["rna-int-max"].as<int>();
+  n_th_ = res["threads"].as<int>();
+
+  args_ = res["input"].as<std::vector<std::string>>();
+  if (cv_fold_>0 || train_mode_) {
+
+  } else {
+    if (args_.size()<4) {
+      std::cout << options.help() << std::endl;
+      exit(0);
+    }
   }
-
-  args_.resize(args_info.inputs_num);
-  for (uint i=0; i!=args_info.inputs_num; ++i)
-    args_[i]=args_info.inputs[i];
-
-  cmdline_parser_free(&args_info);
 
   return *this;
 }
@@ -1660,11 +1831,6 @@ run()
   }
   else
   {
-    if (args_.size()<4)
-    {
-      cmdline_parser_print_help();
-      return 0;
-    }
     if (param_file_.empty())
       default_parameters();
     else

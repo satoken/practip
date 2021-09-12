@@ -52,12 +52,11 @@ add_executable(
   practip
   src/practip.cpp
   src/practip.h
-  src/cmdline.c
-  src/cmdline.h
   src/ip.cpp
   src/ip.h
   src/typedef.h
   #src/defparam.dat
+  src/cxxopts.hpp
   )
 target_link_libraries(practip 
   ${VIENNARNA_LDFLAGS} ${GLPK_LIBRARY} ${ZLIB_LIBRARY} ${GMP_LIBRARY} ${DL_LIBRARY} ${LTDL_LIBRARY} ${MPFR_LIBRARY}
