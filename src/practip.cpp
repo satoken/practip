@@ -7,6 +7,7 @@
 #include <functional>
 #include <numeric>
 #include <chrono>
+#include <memory>
 #include <getopt.h>
 #include <cstring>
 #include <cstdlib>
@@ -14,10 +15,14 @@
 #include <cmath>
 #include <ctime>
 #include <cassert>
+#include "cxxopts.hpp"
+#include "indicators/progress_bar.hpp"
+#include "spdlog/spdlog.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/stopwatch.h"
 
 #include "ip.h"
 #include "practip.h"
-#include "cxxopts.hpp"
 
 //static
 uint PRactIP::epoch = 0;
@@ -227,20 +232,15 @@ PRactIP::
 calculate_loss(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_margin /*=true*/) const
   -> std::pair<float, std::vector<std::unordered_map<std::string, int>>>
 {
-  auto t1 = std::chrono::system_clock::now();
   float loss=0.0;
   auto [int_weight, aa_weight, rna_weight] = calculate_feature_weight(aa, rna);
   loss -= calculate_score(int_weight, aa_weight, rna_weight, correct_int);
   if (max_margin)
     penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
-  auto t2 = std::chrono::system_clock::now();
 
-  auto t3 = std::chrono::system_clock::now();
   VVU predicted_int;
   predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
   loss += calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
-  auto t4 = std::chrono::system_clock::now();
-  //std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() << std::endl;
 #if 0
   for (uint i=0; i!=correct_int.size(); ++i) {
     if (!correct_int[i].empty() || !predicted_int[i].empty())
@@ -256,16 +256,8 @@ calculate_loss(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_ma
   }
   std::cout << std::endl;
 #endif  
-  auto t5 = std::chrono::system_clock::now();
   auto gr = calculate_feature_grad(aa, rna, predicted_int, correct_int);
-  //update_feature_weight(gr, w);
-  auto t6 = std::chrono::system_clock::now();
 
-  std::cout << aa.name << " " << aa.seq.size() << " "
-            << rna.name << " " << rna.seq.size() << " "
-            << std::chrono::duration_cast<std::chrono::milliseconds>(t2-t1).count() << " " 
-            << std::chrono::duration_cast<std::chrono::milliseconds>(t4-t3).count() << " " 
-            << std::chrono::duration_cast<std::chrono::milliseconds>(t6-t5).count() << std::endl;
   return {loss, gr};
 }
 
@@ -358,20 +350,64 @@ void
 PRactIP::
 supervised_training(const VU& use_idx)
 {
+  using namespace indicators;
+
+  std::optional<std::shared_ptr<spdlog::logger>> logger;
+  if (!logdir_.empty()) {
+    logger = spdlog::basic_logger_mt("practip", logdir_ / "log");
+    logger.value()->set_level(log_level_);
+  }
+
   epoch=0;
   // initial supervised learning
   VU idx(use_idx);
   for (uint t=0; t!=d_max_; ++t) {
+    ProgressBar bar{
+      option::MaxProgress{idx.size()},
+      option::BarWidth{50},
+      option::Start{"["},
+      option::Fill{"="},
+      option::Lead{">"},
+      option::Remainder{" "},
+      option::End{"]"},
+      //option::PostfixText{"Extracting Archive"},
+      //option::PrefixText{fmt::format("Epoch {} ", t+1)},
+      option::PrefixText{std::string("Epoch ")+std::to_string(t+1)+std::string(" ")},
+      option::ShowElapsedTime{true},
+      option::ShowRemainingTime{true}
+      //option::ForegroundColor{Color::green},
+      //option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+    };
+
     float total_loss=0.0;
+    uint n=0;
     std::random_shuffle(std::begin(idx), std::end(idx)); // shuffle the order of training data
     for (auto i : idx) {
+      spdlog::stopwatch sw;    
       auto [loss, gr] = calculate_loss(labeled_aa_[i], labeled_rna_[i], labeled_int_[i]);
       update_feature_weight(gr, 1.);
       total_loss += loss;
       epoch++;
       //std::cout << t << " " << epoch << " " << loss << std::endl;
+      bar.set_option(option::PostfixText{
+            std::to_string(++n) + "/" + std::to_string(idx.size())
+      });
+      bar.tick();
+      if (logger) {
+        logger.value()->debug("epoch={}, aa={}, aa_len={}, rna={}, rna_len={}, loss={}, elapsed={}",
+          t+1, labeled_aa_[i].name, labeled_aa_[i].seq.size(),
+          labeled_rna_[i].name, labeled_rna_[i].seq.size(),
+          loss, sw);
+      }
+    }
+    //bar.mark_as_completed();
+    if (logger)
+      logger.value()->info("epoch={}, total_loss={}", t+1, total_loss);
+    if (!logdir_.empty()) {
+      store_parameters((logdir_ / (std::string("epoch_")+std::to_string(t+1))).c_str());
     }
   }
+  //logger.value()->close();
 
   regularization_fobos();
 }
@@ -1745,6 +1781,8 @@ parse_options(int& argc, char**& argv)
   options.add_options()
     ("h,help", "Print usage")
     ("input", "Input file", cxxopts::value<std::vector<std::string>>(), "FILE")
+    ("log-dir", "directory for storing logging files", cxxopts::value<std::string>(), "DIR")
+    ("log-level", "log level (0: warn, 1: info, 2: debug)", cxxopts::value<int>()->default_value("0"), "LEVEL")
     ("t,threads", "The number of threads for IP solver", cxxopts::value<int>()->default_value("1"), "N")
     ("train", "Train the parameters from given data", cxxopts::value<std::string>(), "PARAMFILE")
     ("predict", "Predict interactions", cxxopts::value<std::string>(), "PARAMFILE")
@@ -1794,6 +1832,20 @@ parse_options(int& argc, char**& argv)
   if (res["rna-int-max"].count())
     rna_int_max_ = res["rna-int-max"].as<int>();
   n_th_ = res["threads"].as<int>();
+  if (res.count("log-dir")) 
+    logdir_ = res["log-dir"].as<std::string>();
+  switch (res["log-level"].as<int>()) {
+    default:
+    case 0:
+      log_level_ = spdlog::level::warn;
+      break;
+    case 1:
+      log_level_ = spdlog::level::info;
+      break;
+    case 2:
+      log_level_ = spdlog::level::debug;
+      break;
+  }
 
   args_ = res["input"].as<std::vector<std::string>>();
   if (cv_fold_>0 || train_mode_) {
@@ -1812,6 +1864,12 @@ int
 PRactIP::
 run()
 {
+  // auto logger = spdlog::basic_logger_mt("basic_logger", "logs/basic-log.txt");
+  // spdlog::flush_every(std::chrono::seconds(3));
+  // logger->set_level(spdlog::level::warn);
+  // logger->info("start");
+  // spdlog::get("basic_logger")->warn("start practip");
+
   if (cv_fold_>0 || train_mode_)
   {
     if (args_.size()>0)

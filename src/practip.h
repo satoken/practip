@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <filesystem>
 #include "typedef.h"
 #include "ip.h"
 
@@ -210,6 +211,8 @@ private:
   uint aa_int_max_;
   uint rna_int_max_;
   std::vector<std::string> args_;
+  std::filesystem::path logdir_;
+  spdlog::level::level_enum log_level_;
 
 private:
   static uint epoch;
