@@ -388,11 +388,11 @@ supervised_training(const VU& use_idx)
       update_feature_weight(gr, 1.);
       total_loss += loss;
       epoch++;
-      //std::cout << t << " " << epoch << " " << loss << std::endl;
       bar.set_option(option::PostfixText{
             std::to_string(++n) + "/" + std::to_string(idx.size())
       });
       bar.tick();
+
       if (logger) {
         logger.value()->debug("epoch={}, aa={}, aa_len={}, rna={}, rna_len={}, loss={}, elapsed={}",
           t+1, labeled_aa_[i].name, labeled_aa_[i].seq.size(),
@@ -404,10 +404,10 @@ supervised_training(const VU& use_idx)
     if (logger)
       logger.value()->info("epoch={}, total_loss={}", t+1, total_loss);
     if (!logdir_.empty()) {
+      regularization_fobos();
       store_parameters((logdir_ / (std::string("epoch_")+std::to_string(t+1))).c_str());
     }
   }
-  //logger.value()->close();
 
   regularization_fobos();
 }
@@ -1851,7 +1851,7 @@ parse_options(int& argc, char**& argv)
   if (cv_fold_>0 || train_mode_) {
 
   } else {
-    if (args_.size()<4) {
+    if (args_.size()!=4 && args_.size()!=1) {
       std::cout << options.help() << std::endl;
       exit(0);
     }
@@ -1864,12 +1864,6 @@ int
 PRactIP::
 run()
 {
-  // auto logger = spdlog::basic_logger_mt("basic_logger", "logs/basic-log.txt");
-  // spdlog::flush_every(std::chrono::seconds(3));
-  // logger->set_level(spdlog::level::warn);
-  // logger->info("start");
-  // spdlog::get("basic_logger")->warn("start practip");
-
   if (cv_fold_>0 || train_mode_)
   {
     if (args_.size()>0)
@@ -1894,11 +1888,40 @@ run()
     else
       restore_parameters(param_file_.c_str());
 
-    AA aa(args_[0], args_[1]); 
-    RNA rna(args_[2], args_[3]);
-    VVU predicted_int;
-    float s=predict_interaction(aa, rna, predicted_int);
-    show_result(aa, rna, predicted_int, s);
+    if (args_.size()==4) {
+      AA aa(args_[0], args_[1]); 
+      RNA rna(args_[2], args_[3]);
+      VVU predicted_int;
+      float s=predict_interaction(aa, rna, predicted_int);
+      show_result(aa, rna, predicted_int, s);
+    } else if (args_.size()>0) { // eval
+      load_labeled_data(args_[0]);
+      AccuracySummary int_summary, aa_summary, rna_summary;
+
+      for (auto j=0; j!=labeled_int_.size(); ++j) {
+        VVU predicted_int;
+        predict_interaction(labeled_aa_[j], labeled_rna_[j], predicted_int);
+        Accuracy int_acc, aa_acc, rna_acc;
+        calculate_accuracy(labeled_aa_[j], labeled_rna_[j],
+                          predicted_int, labeled_int_[j],
+                          int_acc, aa_acc, rna_acc);
+        int_summary.add(int_acc);
+        aa_summary.add(aa_acc);
+        rna_summary.add(rna_acc);
+        std::cout << labeled_aa_[j].name << "," << labeled_rna_[j].name << ","
+                  << int_acc.tp << "," << int_acc.tn << "," << int_acc.fp << "," << int_acc.fn << ","
+                  << aa_acc.tp << "," << aa_acc.tn << "," << aa_acc.fp << "," << aa_acc.fn << ","
+                  << rna_acc.tp << "," << rna_acc.tn << "," << rna_acc.fp << "," << rna_acc.fn << std::endl;
+      }
+
+      std::cout << std::endl << "[Summary]" << std::endl;
+      std::cout << "Interaction: ";
+      int_summary.summary(); int_summary.print(std::cout);
+      std::cout << "AA: ";
+      aa_summary.summary(); aa_summary.print(std::cout);
+      std::cout << "RNA: ";
+      rna_summary.summary(); rna_summary.print(std::cout);
+    }
   }
 
   return 0;
