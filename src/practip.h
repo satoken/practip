@@ -123,7 +123,8 @@ public:
       train_mode_(false),
       n_th_(1),
       aa_int_max_(-1u),
-      rna_int_max_(-1u)
+      rna_int_max_(-1u),
+      disable_progressbar_(false)
   { }
   
 public:
@@ -213,6 +214,7 @@ private:
   std::vector<std::string> args_;
   std::filesystem::path logdir_;
   spdlog::level::level_enum log_level_;
+  bool disable_progressbar_;
 
 private:
   static uint epoch;

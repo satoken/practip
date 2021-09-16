@@ -359,22 +359,24 @@ supervised_training(const VU& use_idx)
   // initial supervised learning
   VU idx(use_idx);
   for (uint t=0; t!=d_max_; ++t) {
-    ProgressBar bar{
-      option::MaxProgress{idx.size()},
-      option::BarWidth{50},
-      option::Start{"["},
-      option::Fill{"="},
-      option::Lead{">"},
-      option::Remainder{" "},
-      option::End{"]"},
-      //option::PostfixText{"Extracting Archive"},
-      //option::PrefixText{fmt::format("Epoch {} ", t+1)},
-      option::PrefixText{std::string("Epoch ")+std::to_string(t+1)+std::string(" ")},
-      option::ShowElapsedTime{true},
-      option::ShowRemainingTime{true}
-      //option::ForegroundColor{Color::green},
-      //option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
-    };
+    std::unique_ptr<ProgressBar> bar;
+    if (!disable_progressbar_)
+      bar = std::make_unique<ProgressBar>(
+        option::MaxProgress{idx.size()},
+        option::BarWidth{50},
+        option::Start{"["},
+        option::Fill{"="},
+        option::Lead{">"},
+        option::Remainder{" "},
+        option::End{"]"},
+        //option::PostfixText{"Extracting Archive"},
+        //option::PrefixText{fmt::format("Epoch {} ", t+1)},
+        option::PrefixText{std::string("Epoch ")+std::to_string(t+1)+std::string(" ")},
+        option::ShowElapsedTime{true},
+        option::ShowRemainingTime{true}
+        //option::ForegroundColor{Color::green},
+        //option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+      );
 
     float total_loss=0.0;
     uint n=0;
@@ -385,10 +387,12 @@ supervised_training(const VU& use_idx)
       update_feature_weight(gr, 1.);
       total_loss += loss;
       epoch++;
-      bar.set_option(option::PostfixText{
-            std::to_string(++n) + "/" + std::to_string(idx.size())
-      });
-      bar.tick();
+      if (bar) {
+        bar->set_option(option::PostfixText{
+              std::to_string(++n) + "/" + std::to_string(idx.size())
+        });
+        bar->tick();
+      }
 
       if (logger) {
         logger->debug("epoch={}, aa={}, aa_len={}, rna={}, rna_len={}, loss={}, elapsed={}",
@@ -1787,16 +1791,17 @@ parse_options(int& argc, char**& argv)
   options.add_options()
     ("h,help", "Print usage")
     ("input", "Input file", cxxopts::value<std::vector<std::string>>(), "FILE")
-    ("log-dir", "directory for storing logging files", cxxopts::value<std::string>(), "DIR")
-    ("log-level", "log level (0: warn, 1: info, 2: debug)", cxxopts::value<int>()->default_value("0"), "LEVEL")
+    ("disable-progressbar", "Disable progress bar")
+    ("log-dir", "Directory for storing logging files", cxxopts::value<std::string>(), "DIR")
+    ("log-level", "Log level (0: warn, 1: info, 2: debug)", cxxopts::value<int>()->default_value("0"), "LEVEL")
     ("t,threads", "The number of threads for IP solver", cxxopts::value<int>()->default_value("1"), "N")
     ("train", "Train the parameters from given data", cxxopts::value<std::string>(), "PARAMFILE")
     ("predict", "Predict interactions", cxxopts::value<std::string>(), "PARAMFILE")
     ("c,cross-validation", "Perform the n-fold cross validation", cxxopts::value<int>()->default_value("0"), "N")
     ("e,eta", "Initial step width for the subgradient optimization", cxxopts::value<float>()->default_value("0.5"))
-    ("w,pos-w", "The weight for positive interactions", cxxopts::value<float>()->default_value("4"))
-    ("neg-w", "The weight for negative interactions", cxxopts::value<float>()->default_value("1"))
-    ("D,lambda", "The weight for the L1 regularization term", cxxopts::value<float>()->default_value("0.125"))
+    ("w,pos-w", "The weight for positive interactions", cxxopts::value<float>()->default_value("0.5"))
+    ("neg-w", "The weight for negative interactions", cxxopts::value<float>()->default_value("0.005"))
+    ("D,lambda", "The weight for the L1 regularization term", cxxopts::value<float>()->default_value("0.00001"))
     ("mu", "The weight for semi-supervised objective", cxxopts::value<float>()->default_value("0.5"))
     ("nu", "The weight for the graph regularization term for semi-supervised learning", cxxopts::value<float>()->default_value("1.0"))
     ("d,d-max", "The maximim number of iterations of the supervised learning", cxxopts::value<int>()->default_value("25"))
@@ -1807,60 +1812,68 @@ parse_options(int& argc, char**& argv)
   options.parse_positional({"input"});
   options.positional_help("FILE").show_positional_help();
 
-  auto res = options.parse(argc, argv);
-  if (res.count("help")) {
-    std::cout << options.help() << std::endl;
-    exit(0);
-  }
-
-  if (res.count("train"))
-  {
-    train_mode_ = true;
-    param_file_ = res["train"].as<std::string>();
-  }
-  else if (res.count("predict"))
-  {
-    train_mode_ = false;
-    param_file_ = res["predict"].as<std::string>();
-  }
-  pos_w_ = res["pos-w"].as<float>();
-  neg_w_ = res["neg-w"].as<float>();
-  lambda_ = res["lambda"].as<float>();
-  mu_ = res["mu"].as<float>();
-  nu_ = res["nu"].as<float>();
-  eta0_ = res["eta"].as<float>();
-  d_max_ = res["d-max"].as<int>();
-  g_max_ = res["g-max"].as<int>();
-  cv_fold_ = res["cross-validation"].as<int>();
-  exceed_penalty_ = res["exceeding-penalty"].as<float>();
-  if (res["aa-int-max"].count())
-    aa_int_max_ = res["aa-int-max"].as<int>();
-  if (res["rna-int-max"].count())
-    rna_int_max_ = res["rna-int-max"].as<int>();
-  n_th_ = res["threads"].as<int>();
-  if (res.count("log-dir")) 
-    logdir_ = res["log-dir"].as<std::string>();
-  switch (res["log-level"].as<int>()) {
-    default:
-    case 0:
-      log_level_ = spdlog::level::warn;
-      break;
-    case 1:
-      log_level_ = spdlog::level::info;
-      break;
-    case 2:
-      log_level_ = spdlog::level::debug;
-      break;
-  }
-
-  args_ = res["input"].as<std::vector<std::string>>();
-  if (cv_fold_>0 || train_mode_) {
-
-  } else {
-    if (args_.size()!=4 && args_.size()!=1) {
+  try {
+    auto res = options.parse(argc, argv);
+    if (res.count("help")) {
       std::cout << options.help() << std::endl;
       exit(0);
     }
+
+    if (res.count("disable-progressbar")) 
+      disable_progressbar_ = true;
+
+    if (res.count("train"))
+    {
+      train_mode_ = true;
+      param_file_ = res["train"].as<std::string>();
+    }
+    else if (res.count("predict"))
+    {
+      train_mode_ = false;
+      param_file_ = res["predict"].as<std::string>();
+    }
+    pos_w_ = res["pos-w"].as<float>();
+    neg_w_ = res["neg-w"].as<float>();
+    lambda_ = res["lambda"].as<float>();
+    mu_ = res["mu"].as<float>();
+    nu_ = res["nu"].as<float>();
+    eta0_ = res["eta"].as<float>();
+    d_max_ = res["d-max"].as<int>();
+    g_max_ = res["g-max"].as<int>();
+    cv_fold_ = res["cross-validation"].as<int>();
+    exceed_penalty_ = res["exceeding-penalty"].as<float>();
+    if (res["aa-int-max"].count())
+      aa_int_max_ = res["aa-int-max"].as<int>();
+    if (res["rna-int-max"].count())
+      rna_int_max_ = res["rna-int-max"].as<int>();
+    n_th_ = res["threads"].as<int>();
+    if (res.count("log-dir")) 
+      logdir_ = res["log-dir"].as<std::string>();
+    switch (res["log-level"].as<int>()) {
+      default:
+      case 0:
+        log_level_ = spdlog::level::warn;
+        break;
+      case 1:
+        log_level_ = spdlog::level::info;
+        break;
+      case 2:
+        log_level_ = spdlog::level::debug;
+        break;
+    }
+
+    args_ = res["input"].as<std::vector<std::string>>();
+    if (cv_fold_>0 || train_mode_) {
+
+    } else {
+      if (args_.size()!=4 && args_.size()!=1) {
+        std::cout << options.help() << std::endl;
+        exit(0);
+      }
+    }
+  } catch (cxxopts::option_has_no_value_exception e) {
+    std::cout << options.help() << std::endl;
+    exit(0);
   }
 
   return *this;
