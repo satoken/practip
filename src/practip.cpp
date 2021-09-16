@@ -168,7 +168,8 @@ load_labeled_data(const std::string& filename)
   std::ifstream is(filename.c_str());
   std::cout << "loading labeled data" << std::endl;
   while (is >> aa_seq >> aa_ss >> rna_seq >> rna_ss >> matching) {
-    logger->debug("loading {}, {}, {}, {}, {}", aa_seq, aa_ss, rna_seq, rna_ss, matching);
+    if (logger)
+      logger->debug("loading {}, {}, {}, {}, {}", aa_seq, aa_ss, rna_seq, rna_ss, matching);
     labeled_aa_.push_back(AA());
     uint aa_len=labeled_aa_.back().read(aa_seq, aa_ss);
     labeled_rna_.push_back(RNA());
