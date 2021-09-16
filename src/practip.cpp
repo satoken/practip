@@ -236,13 +236,11 @@ calculate_loss(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_ma
 {
   float loss=0.0;
   auto [int_weight, aa_weight, rna_weight] = calculate_feature_weight(aa, rna);
-  loss -= calculate_score(int_weight, aa_weight, rna_weight, correct_int);
   if (max_margin) 
-    loss += penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
-
-  VVU predicted_int;
-  predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
+    penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
+  const auto [predicted_int, s] = predict_interaction(aa, rna, int_weight, aa_weight, rna_weight);
   loss += calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
+  loss -= calculate_score(int_weight, aa_weight, rna_weight, correct_int);
 
 #if 0
   for (uint i=0; i!=correct_int.size(); ++i) {
@@ -291,8 +289,7 @@ cross_validation(uint n)
     supervised_training(train);
 
     for (auto j : test) {
-      VVU predicted_int;
-      predict_interaction(labeled_aa_[j], labeled_rna_[j], predicted_int);
+      const auto [predicted_int, s] = predict_interaction(labeled_aa_[j], labeled_rna_[j]);
       Accuracy int_acc, aa_acc, rna_acc;
       calculate_accuracy(labeled_aa_[j], labeled_rna_[j],
                          predicted_int, labeled_int_[j],
@@ -302,8 +299,7 @@ cross_validation(uint n)
       rna_summary.add(rna_acc);
     }
     for (auto j : train) {
-      VVU predicted_int;
-      predict_interaction(labeled_aa_[j], labeled_rna_[j], predicted_int);
+      const auto [predicted_int, s]  = predict_interaction(labeled_aa_[j], labeled_rna_[j]);
       Accuracy int_acc, aa_acc, rna_acc;
       calculate_accuracy(labeled_aa_[j], labeled_rna_[j],
                          predicted_int, labeled_int_[j],
@@ -353,30 +349,29 @@ void
 PRactIP::
 supervised_training(const VU& use_idx)
 {
-  using namespace indicators;
   auto logger = spdlog::get("practip");
 
   epoch=0;
   // initial supervised learning
   VU idx(use_idx);
   for (uint t=0; t!=d_max_; ++t) {
-    std::unique_ptr<ProgressBar> bar;
+    std::unique_ptr<indicators::ProgressBar> bar;
     if (!disable_progressbar_)
-      bar = std::make_unique<ProgressBar>(
-        option::MaxProgress{idx.size()},
-        option::BarWidth{50},
-        option::Start{"["},
-        option::Fill{"="},
-        option::Lead{">"},
-        option::Remainder{" "},
-        option::End{"]"},
-        //option::PostfixText{"Extracting Archive"},
-        //option::PrefixText{fmt::format("Epoch {} ", t+1)},
-        option::PrefixText{std::string("Epoch ")+std::to_string(t+1)+std::string(" ")},
-        option::ShowElapsedTime{true},
-        option::ShowRemainingTime{true}
-        //option::ForegroundColor{Color::green},
-        //option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
+      bar = std::make_unique<indicators::ProgressBar>(
+        indicators::option::MaxProgress{idx.size()},
+        indicators::option::BarWidth{50},
+        indicators::option::Start{"["},
+        indicators::option::Fill{"="},
+        indicators::option::Lead{">"},
+        indicators::option::Remainder{" "},
+        indicators::option::End{"]"},
+        //indicators::option::PostfixText{"Extracting Archive"},
+        //indicators::option::PrefixText{fmt::format("Epoch {} ", t+1)},
+        indicators::option::PrefixText{std::string("Epoch ")+std::to_string(t+1)+std::string(" ")},
+        indicators::option::ShowElapsedTime{true},
+        indicators::option::ShowRemainingTime{true}
+        //indicators::option::ForegroundColor{Color::green},
+        //indicators::option::FontStyles{std::vector<FontStyle>{FontStyle::bold}},
       );
 
     float total_loss=0.0;
@@ -389,7 +384,7 @@ supervised_training(const VU& use_idx)
       total_loss += loss;
       epoch++;
       if (bar) {
-        bar->set_option(option::PostfixText{
+        bar->set_option(indicators::option::PostfixText{
               std::to_string(++n) + "/" + std::to_string(idx.size())
         });
         bar->tick();
@@ -474,12 +469,12 @@ semisupervised_training(const VU& use_idx)
   regularization_fobos();
 }
 
-float
+auto
 PRactIP::
-predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int, float w /*=1.0*/)
+predict_interaction(const AA& aa, const RNA& rna, float w /*=1.0*/) -> std::pair<VVU, float>
 {
-  auto [int_weight, aa_weight, rna_weight] = calculate_feature_weight(aa, rna);
-  return predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int, w);
+  const auto [int_weight, aa_weight, rna_weight] = calculate_feature_weight(aa, rna);
+  return predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, w);
 }
 
 void
@@ -833,32 +828,27 @@ calculate_feature_weight(const AA& aa, const RNA& rna) const
   return {int_weight, aa_weight, rna_weight};
 }
 
-float
+void
 PRactIP::
 penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const
 {
   assert(int_weight.size()==correct_int.size());
   assert(int_weight.size()==aa_weight.size());
-  auto loss_const = 0.0;
 
   for (uint i=0; i!=int_weight.size(); ++i) 
     for (uint j=0; j!=int_weight[i].size(); ++j)
       int_weight[i][j] += neg_w_;
 
   for (uint i=0; i!=correct_int.size(); ++i)
-    for (auto j : correct_int[i]) {
+    for (auto j : correct_int[i]) 
       int_weight[i][j] -= pos_w_+neg_w_;
-      loss_const += pos_w_;
-    }
 
   for (uint i=0; i!=aa_weight.size(); ++i) 
     aa_weight[i] += neg_w_;
 
   for (uint i=0; i!=correct_int.size(); ++i)
-    if (!correct_int[i].empty()) {
+    if (!correct_int[i].empty()) 
       aa_weight[i] -= pos_w_+neg_w_;
-      loss_const += pos_w_;
-    }
 
   for (uint j=0; j!=rna_weight.size(); ++j)
     rna_weight[j] += neg_w_;
@@ -868,12 +858,8 @@ penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, con
     for (auto j : correct_int[i])
       rna_has_int[j] = true;
   for (uint j=0; j!=rna_has_int.size(); ++j)
-    if (rna_has_int[j]) {
+    if (rna_has_int[j]) 
       rna_weight[j] -= pos_w_+neg_w_;
-      loss_const += pos_w_;
-    }
-
-    return loss_const;
 }
 
 auto
@@ -1151,14 +1137,15 @@ predict_interaction_constraints(const AA& aa, const RNA& rna,
   }
 }
 
-float
+auto
 PRactIP::
 predict_interaction(const AA& aa, const RNA& rna,
-                    const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p, float w /*=1.0*/) const
+                    const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, float w /*=1.0*/) const -> std::pair<VVU, float>
 {
   const uint aa_len = int_weight.size();
   const uint rna_len = int_weight[0].size();
-  
+  VVU p;
+
   IP ip(IP::MAX, n_th_);
 
   VI x(aa_len, -1);             // binding site in AA
@@ -1178,7 +1165,7 @@ predict_interaction(const AA& aa, const RNA& rna,
       if (z[i][j]>=0 && ip.get_value(z[i][j])>0.5)
         p[i].push_back(j);
 
-  return s;
+  return {p, s};
 }
 
 float
@@ -1917,16 +1904,14 @@ run()
     if (args_.size()==4) {
       AA aa(args_[0], args_[1]); 
       RNA rna(args_[2], args_[3]);
-      VVU predicted_int;
-      float s=predict_interaction(aa, rna, predicted_int);
+      const auto [predicted_int, s] = predict_interaction(aa, rna);
       show_result(aa, rna, predicted_int, s);
     } else if (args_.size()>0) { // eval
       load_labeled_data(args_[0]);
       AccuracySummary int_summary, aa_summary, rna_summary;
 
       for (auto j=0; j!=labeled_int_.size(); ++j) {
-        VVU predicted_int;
-        predict_interaction(labeled_aa_[j], labeled_rna_[j], predicted_int);
+        const auto [predicted_int, s] = predict_interaction(labeled_aa_[j], labeled_rna_[j]);
         Accuracy int_acc, aa_acc, rna_acc;
         calculate_accuracy(labeled_aa_[j], labeled_rna_[j],
                           predicted_int, labeled_int_[j],

@@ -161,15 +161,15 @@ private:
 
   void read_correct_interaction(const std::string& filename, VVU& correct_int) const; 
   auto calculate_feature_weight(const AA& aa, const RNA& rna) const -> std::tuple<VVF, VF, VF>;
-  float penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const;
+  void penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const;
   auto calculate_feature_grad(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int) const -> std::vector<std::unordered_map<std::string, int>>;
   void update_feature_weight(const std::vector<std::unordered_map<std::string, int>>& gr, float w=1.0);
 
   float update_fobos(uint fgroup, const char* fname) const;
   float regularization_fobos();
 
-  float predict_interaction(const AA& aa, const RNA& rna, VVU& predicted_int, float w=1.0);
-  float predict_interaction(const AA& aa, const RNA& rna, const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, VVU& p, float w=1.0) const;
+  auto predict_interaction(const AA& aa, const RNA& rna, float w=1.0) -> std::pair<VVU, float>;
+  auto predict_interaction(const AA& aa, const RNA& rna, const VVF& int_weight, const VF& aa_weight, const VF& rna_weight, float w=1.0) const -> std::pair<VVU, float>;
   void predict_interaction_object(const AA& aa, const RNA& rna,
                                   const VVF& int_weight, const VF& aa_weight, const VF& rna_weight,
                                   VI& x, VI& y, VVI& z, VI& sl_x, VI& sl_y, IP& ip, float w=1.0) const;
