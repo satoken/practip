@@ -163,11 +163,12 @@ uint
 PRactIP::
 load_labeled_data(const std::string& filename)
 {
+  auto logger = spdlog::get("practip");
   std::string aa_seq, aa_ss, rna_seq, rna_ss, matching;
   std::ifstream is(filename.c_str());
   std::cout << "loading labeled data" << std::endl;
   while (is >> aa_seq >> aa_ss >> rna_seq >> rna_ss >> matching) {
-    std::cout << aa_seq << " " << aa_ss << " " << rna_seq << " " << rna_ss << " " << matching << std::endl;
+    logger->debug("loading {}, {}, {}, {}, {}", aa_seq, aa_ss, rna_seq, rna_ss, matching);
     labeled_aa_.push_back(AA());
     uint aa_len=labeled_aa_.back().read(aa_seq, aa_ss);
     labeled_rna_.push_back(RNA());
@@ -235,12 +236,13 @@ calculate_loss(const AA& aa, const RNA& rna, const VVU& correct_int, bool max_ma
   float loss=0.0;
   auto [int_weight, aa_weight, rna_weight] = calculate_feature_weight(aa, rna);
   loss -= calculate_score(int_weight, aa_weight, rna_weight, correct_int);
-  if (max_margin)
-    penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
+  if (max_margin) 
+    loss += penalize_correct_interaction(int_weight, aa_weight, rna_weight, correct_int);
 
   VVU predicted_int;
   predict_interaction(aa, rna, int_weight, aa_weight, rna_weight, predicted_int);
   loss += calculate_score(int_weight, aa_weight, rna_weight, predicted_int);
+
 #if 0
   for (uint i=0; i!=correct_int.size(); ++i) {
     if (!correct_int[i].empty() || !predicted_int[i].empty())
@@ -351,12 +353,7 @@ PRactIP::
 supervised_training(const VU& use_idx)
 {
   using namespace indicators;
-
-  std::optional<std::shared_ptr<spdlog::logger>> logger;
-  if (!logdir_.empty()) {
-    logger = spdlog::basic_logger_mt("practip", logdir_ / "log");
-    logger.value()->set_level(log_level_);
-  }
+  auto logger = spdlog::get("practip");
 
   epoch=0;
   // initial supervised learning
@@ -394,7 +391,7 @@ supervised_training(const VU& use_idx)
       bar.tick();
 
       if (logger) {
-        logger.value()->debug("epoch={}, aa={}, aa_len={}, rna={}, rna_len={}, loss={}, elapsed={}",
+        logger->debug("epoch={}, aa={}, aa_len={}, rna={}, rna_len={}, loss={}, elapsed={}",
           t+1, labeled_aa_[i].name, labeled_aa_[i].seq.size(),
           labeled_rna_[i].name, labeled_rna_[i].seq.size(),
           loss, sw);
@@ -402,7 +399,7 @@ supervised_training(const VU& use_idx)
     }
     //bar.mark_as_completed();
     if (logger)
-      logger.value()->info("epoch={}, total_loss={}", t+1, total_loss);
+      logger->info("epoch={}, total_loss={}", t+1, total_loss);
     if (!logdir_.empty()) {
       regularization_fobos();
       store_parameters((logdir_ / (std::string("epoch_")+std::to_string(t+1))).c_str());
@@ -831,27 +828,32 @@ calculate_feature_weight(const AA& aa, const RNA& rna) const
   return {int_weight, aa_weight, rna_weight};
 }
 
-void
+float
 PRactIP::
 penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const
 {
   assert(int_weight.size()==correct_int.size());
   assert(int_weight.size()==aa_weight.size());
+  auto loss_const = 0.0;
 
   for (uint i=0; i!=int_weight.size(); ++i) 
     for (uint j=0; j!=int_weight[i].size(); ++j)
       int_weight[i][j] += neg_w_;
 
   for (uint i=0; i!=correct_int.size(); ++i)
-    for (auto j : correct_int[i])
+    for (auto j : correct_int[i]) {
       int_weight[i][j] -= pos_w_+neg_w_;
+      loss_const += pos_w_;
+    }
 
   for (uint i=0; i!=aa_weight.size(); ++i) 
     aa_weight[i] += neg_w_;
 
   for (uint i=0; i!=correct_int.size(); ++i)
-    if (!correct_int[i].empty())
+    if (!correct_int[i].empty()) {
       aa_weight[i] -= pos_w_+neg_w_;
+      loss_const += pos_w_;
+    }
 
   for (uint j=0; j!=rna_weight.size(); ++j)
     rna_weight[j] += neg_w_;
@@ -861,8 +863,12 @@ penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, con
     for (auto j : correct_int[i])
       rna_has_int[j] = true;
   for (uint j=0; j!=rna_has_int.size(); ++j)
-    if (rna_has_int[j])
+    if (rna_has_int[j]) {
       rna_weight[j] -= pos_w_+neg_w_;
+      loss_const += pos_w_;
+    }
+
+    return loss_const;
 }
 
 auto
@@ -1864,6 +1870,12 @@ int
 PRactIP::
 run()
 {
+  if (!logdir_.empty()) {
+    auto logger = spdlog::basic_logger_mt("practip", logdir_ / "log");
+    logger->set_level(log_level_);
+    logger->flush_on(log_level_);
+  }
+
   if (cv_fold_>0 || train_mode_)
   {
     if (args_.size()>0)

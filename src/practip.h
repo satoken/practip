@@ -160,7 +160,7 @@ private:
 
   void read_correct_interaction(const std::string& filename, VVU& correct_int) const; 
   auto calculate_feature_weight(const AA& aa, const RNA& rna) const -> std::tuple<VVF, VF, VF>;
-  void penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const;
+  float penalize_correct_interaction(VVF& int_weight, VF& aa_weight, VF& rna_weight, const VVU& correct_int) const;
   auto calculate_feature_grad(const AA& aa, const RNA& rna, const VVU& predicted_int, const VVU& correct_int) const -> std::vector<std::unordered_map<std::string, int>>;
   void update_feature_weight(const std::vector<std::unordered_map<std::string, int>>& gr, float w=1.0);
 
