@@ -25,6 +25,7 @@ include_directories("spdlog/include")
 # add_definitions(-DHAVE_VIENNA18)
 # add_definitions(-DHAVE_VIENNA20)
 find_library(PTHREAD_LIBRARY pthread)
+find_library(STDFS_LIBRARY stdc++fs)
 
 if(ENABLE_CPLEX)
   find_package(CPLEX)
@@ -62,7 +63,7 @@ add_executable(
   )
 target_link_libraries(practip 
   ${VIENNARNA_LDFLAGS} ${GLPK_LIBRARY} ${ZLIB_LIBRARY} ${GMP_LIBRARY} ${DL_LIBRARY} ${LTDL_LIBRARY} ${MPFR_LIBRARY}
-  ${CPLEX_LIBRARY} ${GUROBI_LIBRARY} ${GUROBI_CXX_LIBRARY} ${PTHREAD_LIBRARY} ${CMAKE_DL_LIBS})
+  ${CPLEX_LIBRARY} ${GUROBI_LIBRARY} ${GUROBI_CXX_LIBRARY} ${PTHREAD_LIBRARY} ${STDDFS_LIBRARY} ${CMAKE_DL_LIBS})
 target_compile_features(practip PUBLIC cxx_std_17)
 
 install(TARGETS practip RUNTIME DESTINATION bin)
